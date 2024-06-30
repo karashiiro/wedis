@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber;
 
 #[macro_use(concat_string)]
@@ -12,6 +12,8 @@ fn main() {
     let db: Mutex<HashMap<Vec<u8>, Vec<u8>>> = Mutex::new(HashMap::new());
 
     let mut s = redcon::listen("127.0.0.1:6379", db).unwrap();
+    s.opened = Some(|conn, _db| info!("Got new connection from {}", conn.addr()));
+    s.closed = Some(|_conn, _db, err| error!("{:?}", err));
     s.command = Some(|conn, db, args| {
         let name = String::from_utf8_lossy(&args[0]).to_lowercase();
 
