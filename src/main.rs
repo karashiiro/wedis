@@ -38,6 +38,7 @@ fn main() {
                     None => conn.write_null(),
                 }
             }
+            "select" => conn.write_string("OK"),
             "info" => {
                 conn.write_bulk(
                     concat_string!(
