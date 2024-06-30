@@ -1,13 +1,13 @@
-use std::{collections::HashMap, sync::Mutex};
-
+use anyhow::Result;
 use redcon::Conn;
+use rocksdb::DB;
 
-pub fn set(conn: &mut Conn, db: &Mutex<HashMap<Vec<u8>, Vec<u8>>>, args: &Vec<Vec<u8>>) {
+pub fn set(conn: &mut Conn, db: &DB, args: &Vec<Vec<u8>>) -> Result<()> {
     if args.len() < 3 {
         conn.write_error("ERR wrong number of arguments");
-        return;
+        return Ok(());
     }
-    let mut db = db.lock().unwrap();
-    db.insert(args[1].to_owned(), args[2].to_owned());
+    db.put(args[1].to_owned(), args[2].to_owned())?;
     conn.write_string("OK");
+    Ok(())
 }

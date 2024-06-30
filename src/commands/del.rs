@@ -1,15 +1,17 @@
-use std::{collections::HashMap, sync::Mutex};
-
+use anyhow::Result;
 use redcon::Conn;
+use rocksdb::{ErrorKind, DB};
 
-pub fn del(conn: &mut Conn, db: &Mutex<HashMap<Vec<u8>, Vec<u8>>>, args: &Vec<Vec<u8>>) {
+pub fn del(conn: &mut Conn, db: &DB, args: &Vec<Vec<u8>>) -> Result<()> {
     if args.len() != 2 {
         conn.write_error("ERR wrong number of arguments");
-        return;
+        return Ok(());
     }
-    let mut db = db.lock().unwrap();
-    match db.remove(&args[1]) {
-        Some(_) => conn.write_integer(1),
-        None => conn.write_integer(0),
+    match db.delete(&args[1]) {
+        Ok(_) => Ok(conn.write_integer(1)),
+        Err(err) => match err.kind() {
+            ErrorKind::NotFound => Ok(conn.write_integer(0)),
+            _ => Err(err.into()),
+        },
     }
 }

@@ -1,15 +1,14 @@
-use std::{collections::HashMap, sync::Mutex};
-
+use anyhow::Result;
 use redcon::Conn;
+use rocksdb::DB;
 
-pub fn get(conn: &mut Conn, db: &Mutex<HashMap<Vec<u8>, Vec<u8>>>, args: &Vec<Vec<u8>>) {
+pub fn get(conn: &mut Conn, db: &DB, args: &Vec<Vec<u8>>) -> Result<()> {
     if args.len() < 2 {
         conn.write_error("ERR wrong number of arguments");
-        return;
+        return Ok(());
     }
-    let db = db.lock().unwrap();
-    match db.get(&args[1]) {
-        Some(val) => conn.write_bulk(val),
-        None => conn.write_null(),
+    match db.get(&args[1])? {
+        Some(val) => Ok(conn.write_bulk(&val)),
+        None => Ok(conn.write_null()),
     }
 }
