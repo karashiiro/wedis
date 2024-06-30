@@ -13,7 +13,11 @@ fn main() {
 
     let mut s = redcon::listen("127.0.0.1:6379", db).unwrap();
     s.opened = Some(|conn, _db| info!("Got new connection from {}", conn.addr()));
-    s.closed = Some(|_conn, _db, err| error!("{:?}", err));
+    s.closed = Some(|_conn, _db, err| {
+        if let Some(err) = err {
+            error!("{}", err)
+        }
+    });
     s.command = Some(|conn, db, args| {
         let name = String::from_utf8_lossy(&args[0]).to_lowercase();
 
