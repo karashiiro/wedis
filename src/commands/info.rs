@@ -1,5 +1,6 @@
 use redcon::Conn;
 
+#[tracing::instrument(skip_all)]
 pub fn info(conn: &mut Conn) {
     conn.write_bulk(
         concat_string!(
