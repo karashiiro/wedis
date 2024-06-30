@@ -6,7 +6,7 @@ use anyhow::Result;
 use connection::ConnectionContext;
 use redcon::Conn;
 use rocksdb::{Options, DB};
-use tracing::{error, info, Level};
+use tracing::{debug, error, info, Level};
 use tracing_subscriber;
 
 #[macro_use(concat_string)]
@@ -18,10 +18,18 @@ fn handle_result(result: Result<()>) {
     }
 }
 
+fn log_command(args: Vec<Vec<u8>>) {
+    let mut parsed_args: Vec<String> = vec![];
+    for arg in args {
+        parsed_args.push(String::from_utf8_lossy(&arg).into_owned())
+    }
+    debug!("> {:?}", parsed_args);
+}
+
 fn handle_command(conn: &mut Conn, db: &DB, args: Vec<Vec<u8>>) {
     let name = String::from_utf8_lossy(&args[0]).to_uppercase();
 
-    info!("Received command: \"{}\"", name);
+    log_command(args.clone());
     match name.as_str() {
         "PING" => conn.write_string("PONG"),
         "CLIENT" => commands::client(conn, db, &args),

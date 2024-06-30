@@ -1,6 +1,5 @@
 use redcon::Conn;
 use rocksdb::DB;
-use tracing::debug;
 
 use crate::connection::ConnectionContext;
 
@@ -32,13 +31,7 @@ pub fn client(conn: &mut Conn, _db: &DB, args: &Vec<Vec<u8>>) {
                     _ => conn.write_error("ERR unknown attribute"),
                 };
             }
-            None => {
-                let mut parsed_args: Vec<String> = vec![];
-                for arg in args {
-                    parsed_args.push(String::from_utf8_lossy(&arg).into_owned())
-                }
-                debug!("{:?}", parsed_args);
-            }
+            None => (),
         },
         _ => conn.write_error("ERR unknown command"),
     };
