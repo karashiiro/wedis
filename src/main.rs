@@ -1,10 +1,12 @@
 mod commands;
+mod connection;
 mod known_issues;
 
 use anyhow::Result;
+use connection::ConnectionContext;
 use redcon::Conn;
 use rocksdb::{Options, DB};
-use tracing::{debug, error, info, Level};
+use tracing::{error, info, Level};
 use tracing_subscriber;
 
 #[macro_use(concat_string)]
@@ -22,14 +24,7 @@ fn handle_command(conn: &mut Conn, db: &DB, args: Vec<Vec<u8>>) {
     info!("Received command: \"{}\"", name);
     match name.as_str() {
         "PING" => conn.write_string("PONG"),
-        "CLIENT" => {
-            let mut parsed_args: Vec<String> = vec![];
-            for arg in &args {
-                parsed_args.push(String::from_utf8_lossy(&arg).into_owned())
-            }
-            debug!("{:?}", parsed_args);
-            conn.write_string("OK");
-        }
+        "CLIENT" => commands::client(conn, db, &args),
         "SET" => handle_result(commands::set(conn, db, &args)),
         "GET" => handle_result(commands::get(conn, db, &args)),
         "DEL" => handle_result(commands::del(conn, db, &args)),
@@ -49,7 +44,10 @@ fn main() {
         let db = DB::open_default(path).unwrap();
 
         let mut s = redcon::listen("127.0.0.1:6379", db).unwrap();
-        s.opened = Some(|conn, _db| info!("Got new connection from {}", conn.addr()));
+        s.opened = Some(|conn, _db| {
+            info!("Got new connection from {}", conn.addr());
+            conn.context = Some(Box::new(ConnectionContext::new()));
+        });
         s.closed = Some(|_conn, _db, err| {
             if let Some(err) = err {
                 error!("{}", err)
