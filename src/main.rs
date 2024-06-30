@@ -40,6 +40,17 @@ fn main() {
                     None => conn.write_null(),
                 }
             }
+            "del" => {
+                if args.len() != 2 {
+                    conn.write_error("ERR wrong number of arguments");
+                    return;
+                }
+                let mut db = db.lock().unwrap();
+                match db.remove(&args[1]) {
+                    Some(_) => conn.write_integer(1),
+                    None => conn.write_integer(0),
+                }
+            }
             "select" => conn.write_string("OK"),
             "info" => {
                 conn.write_bulk(
