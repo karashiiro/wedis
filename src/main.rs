@@ -36,6 +36,8 @@ fn handle_command(conn: &mut Conn, db: &DB, args: Vec<Vec<u8>>) {
         "SET" => handle_result(commands::set(conn, db, &args)),
         "GET" => handle_result(commands::get(conn, db, &args)),
         "DEL" => handle_result(commands::del(conn, db, &args)),
+        "HSET" => handle_result(commands::hset(conn, db, &args)),
+        "HGET" => handle_result(commands::hget(conn, db, &args)),
         "SELECT" => conn.write_string("OK"),
         "INFO" => commands::info(conn),
         _ => conn.write_error("ERR unknown command"),

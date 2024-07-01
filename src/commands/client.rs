@@ -6,7 +6,7 @@ use crate::connection::ConnectionContext;
 #[tracing::instrument(skip_all)]
 pub fn client(conn: &mut Conn, _db: &DB, args: &Vec<Vec<u8>>) {
     if args.len() < 2 {
-        conn.write_error("ERR wrong number of arguments");
+        conn.write_error("ERR wrong number of arguments for command");
         return;
     }
 
@@ -15,7 +15,7 @@ pub fn client(conn: &mut Conn, _db: &DB, args: &Vec<Vec<u8>>) {
         "SETINFO" => match &mut conn.context {
             Some(ctx) => {
                 if args.len() < 4 {
-                    conn.write_error("ERR wrong number of arguments");
+                    conn.write_error("ERR wrong number of arguments for command");
                     return;
                 }
 
