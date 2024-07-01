@@ -1,6 +1,9 @@
+#![feature(trait_alias)]
+
 mod commands;
 mod connection;
 mod known_issues;
+mod types;
 
 use anyhow::Result;
 use connection::ConnectionContext;
