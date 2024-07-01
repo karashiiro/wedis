@@ -1,15 +1,11 @@
 mod client;
-mod del;
-mod get;
-mod hget;
-mod hset;
+mod generic;
+mod hashes;
 mod info;
-mod set;
+mod strings;
 
-pub use crate::commands::client::client;
-pub use crate::commands::del::del;
-pub use crate::commands::get::get;
-pub use crate::commands::hget::hget;
-pub use crate::commands::hset::hset;
-pub use crate::commands::info::info;
-pub use crate::commands::set::set;
+pub use crate::commands::client::*;
+pub use crate::commands::generic::*;
+pub use crate::commands::hashes::*;
+pub use crate::commands::info::*;
+pub use crate::commands::strings::*;
