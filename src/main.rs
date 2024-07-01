@@ -1,9 +1,11 @@
 mod commands;
 mod connection;
+mod database;
 mod known_issues;
 
 use anyhow::Result;
 use connection::ConnectionContext;
+use database::Database;
 use redcon::Conn;
 use rocksdb::{Options, DB};
 use tracing::{debug, error, info, Level};
@@ -26,13 +28,13 @@ fn log_command(args: Vec<Vec<u8>>) {
     debug!("> {:?}", parsed_args);
 }
 
-fn handle_command(conn: &mut Conn, db: &DB, args: Vec<Vec<u8>>) {
+fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
     let name = String::from_utf8_lossy(&args[0]).to_uppercase();
 
     log_command(args.clone());
     match name.as_str() {
         "PING" => conn.write_string("PONG"),
-        "CLIENT" => commands::client(conn, db, &args),
+        "CLIENT" => commands::client(conn, &args),
         "SET" => handle_result(commands::set(conn, db, &args)),
         "GET" => handle_result(commands::get(conn, db, &args)),
         "DEL" => handle_result(commands::del(conn, db, &args)),
@@ -51,9 +53,10 @@ fn main() {
 
     let path = ".wedis";
     {
-        let db = DB::open_default(path).unwrap();
+        let db_raw = DB::open_default(path).expect("Failed to open database");
+        let db = Database::new(db_raw);
 
-        let mut s = redcon::listen("127.0.0.1:6379", db).unwrap();
+        let mut s = redcon::listen("127.0.0.1:6379", db).expect("Failed to start server");
         s.opened = Some(|conn, _db| {
             info!("Got new connection from {}", conn.addr());
             conn.context = Some(Box::new(ConnectionContext::new()));
@@ -68,7 +71,7 @@ fn main() {
 
         known_issues::warn_known_issues();
 
-        s.serve().unwrap();
+        s.serve().expect("Failed to execute server");
     }
     let _ = DB::destroy(&Options::default(), path);
 }

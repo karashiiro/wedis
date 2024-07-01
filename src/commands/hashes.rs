@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use redcon::Conn;
-use rocksdb::DB;
+
+use crate::database::{Database, DatabaseOperations};
 
 #[tracing::instrument(skip_all)]
-pub fn hset(conn: &mut Conn, db: &DB, args: &Vec<Vec<u8>>) -> Result<()> {
+pub fn hset(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
     if args.len() < 4 {
         conn.write_error("ERR wrong number of arguments for command");
         return Ok(());
@@ -13,7 +14,7 @@ pub fn hset(conn: &mut Conn, db: &DB, args: &Vec<Vec<u8>>) -> Result<()> {
 
     // TODO: Avoid relying on encoding values as UTF-8 strings
     // TODO: Handle multiple values
-    let key = args[1].to_owned();
+    let key = &args[1];
     let subkey1 = String::from_utf8_lossy(&args[2]).into_owned();
     let subvalue1 = String::from_utf8_lossy(&args[3]).into_owned();
 
@@ -23,14 +24,14 @@ pub fn hset(conn: &mut Conn, db: &DB, args: &Vec<Vec<u8>>) -> Result<()> {
     // TODO: Error if existing value does not represent a hash
     // "WRONGTYPE Operation against a key holding the wrong kind of value"
     let value = serde_json::to_string(&dict)?;
-    db.put(key, value.as_bytes())?;
+    db.put(&key, value.as_bytes())?;
 
     conn.write_integer(1);
     Ok(())
 }
 
 #[tracing::instrument(skip_all)]
-pub fn hget(conn: &mut Conn, db: &DB, args: &Vec<Vec<u8>>) -> Result<()> {
+pub fn hget(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
     if args.len() < 3 {
         conn.write_error("ERR wrong number of arguments for command");
         return Ok(());

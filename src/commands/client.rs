@@ -1,10 +1,9 @@
 use redcon::Conn;
-use rocksdb::DB;
 
 use crate::connection::ConnectionContext;
 
 #[tracing::instrument(skip_all)]
-pub fn client(conn: &mut Conn, _db: &DB, args: &Vec<Vec<u8>>) {
+pub fn client(conn: &mut Conn, args: &Vec<Vec<u8>>) {
     if args.len() < 2 {
         conn.write_error("ERR wrong number of arguments for command");
         return;
