@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use crate::{
-    connection::Connection,
+    connection::{ClientError, Connection},
     database::{DatabaseError, DatabaseOperations},
 };
 
@@ -12,7 +12,7 @@ pub fn set(
     args: &Vec<Vec<u8>>,
 ) -> Result<()> {
     if args.len() < 3 {
-        conn.write_error("ERR wrong number of arguments for command");
+        conn.write_error(ClientError::ArgCount);
         return Ok(());
     }
 
@@ -29,7 +29,7 @@ pub fn get(
     args: &Vec<Vec<u8>>,
 ) -> Result<()> {
     if args.len() < 2 {
-        conn.write_error("ERR wrong number of arguments for command");
+        conn.write_error(ClientError::ArgCount);
         return Ok(());
     }
 
@@ -39,8 +39,7 @@ pub fn get(
             None => Ok(conn.write_null()),
         },
         Err(DatabaseError::WrongType { expected: _ }) => {
-            Ok(conn
-                .write_error("WRONGTYPE Operation against a key holding the wrong kind of value"))
+            Ok(conn.write_error(ClientError::WrongType))
         }
         Err(err) => Err(err.into()),
     }

@@ -4,7 +4,7 @@ mod database;
 mod known_issues;
 
 use anyhow::Result;
-use connection::{Client, Connection, ConnectionContext};
+use connection::{Client, ClientError, Connection, ConnectionContext};
 use database::Database;
 use redcon::Conn;
 use rocksdb::{Options, TransactionDB, DB};
@@ -43,7 +43,7 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "HGET" => handle_result(commands::hget(&mut conn, db, &args)),
         "SELECT" => conn.write_string("OK"),
         "INFO" => commands::info(&mut conn),
-        _ => conn.write_error("ERR unknown command"),
+        _ => conn.write_error(ClientError::UnknownCommand),
     }
 }
 

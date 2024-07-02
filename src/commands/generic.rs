@@ -1,6 +1,9 @@
 use anyhow::Result;
 
-use crate::{connection::Connection, database::DatabaseOperations};
+use crate::{
+    connection::{ClientError, Connection},
+    database::DatabaseOperations,
+};
 
 #[tracing::instrument(skip_all)]
 pub fn del(
@@ -10,7 +13,7 @@ pub fn del(
 ) -> Result<()> {
     // TODO: Handle multiple values
     if args.len() != 2 {
-        conn.write_error("ERR wrong number of arguments for command");
+        conn.write_error(ClientError::ArgCount);
         return Ok(());
     }
 

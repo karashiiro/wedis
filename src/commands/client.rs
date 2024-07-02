@@ -1,9 +1,9 @@
-use crate::connection::{Connection, ConnectionContext};
+use crate::connection::{ClientError, Connection, ConnectionContext};
 
 #[tracing::instrument(skip_all)]
 pub fn client(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
     if args.len() < 2 {
-        conn.write_error("ERR wrong number of arguments for command");
+        conn.write_error(ClientError::ArgCount);
         return;
     }
 
@@ -12,7 +12,7 @@ pub fn client(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
         "SETINFO" => match &mut conn.context() {
             Some(ctx) => {
                 if args.len() < 4 {
-                    conn.write_error("ERR wrong number of arguments for command");
+                    conn.write_error(ClientError::ArgCount);
                     return;
                 }
 
@@ -25,12 +25,12 @@ pub fn client(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
                 match attribute_key.as_str() {
                     "LIB-NAME" => ctx.set_lib_name(&attribute_value),
                     "LIB-VER" => ctx.set_lib_version(&attribute_value),
-                    _ => conn.write_error("ERR unknown attribute"),
+                    _ => conn.write_error(ClientError::UnknownAttribute),
                 };
             }
             None => (),
         },
-        _ => conn.write_error("ERR unknown command"),
+        _ => conn.write_error(ClientError::UnknownCommand),
     };
 
     conn.write_string("OK")

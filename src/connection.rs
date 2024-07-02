@@ -1,9 +1,22 @@
 use std::any::Any;
 
 use redcon::Conn;
+use thiserror::Error;
 
 #[cfg(test)]
 use mockall::automock;
+
+#[derive(Error, Debug)]
+pub enum ClientError {
+    #[error("ERR unknown command")]
+    UnknownCommand,
+    #[error("ERR unknown attribute")]
+    UnknownAttribute,
+    #[error("ERR wrong number of arguments for command")]
+    ArgCount,
+    #[error("WRONGTYPE Operation against a key holding the wrong kind of value")]
+    WrongType,
+}
 
 pub struct ConnectionContext {
     lib_name: String,
@@ -43,7 +56,7 @@ pub trait Connection {
 
     fn write_integer(&mut self, x: i64);
 
-    fn write_error(&mut self, msg: &str);
+    fn write_error(&mut self, err: ClientError);
 
     fn write_null(&mut self);
 
@@ -63,8 +76,8 @@ impl Connection for Client<'_> {
         self.0.write_integer(x)
     }
 
-    fn write_error(&mut self, msg: &str) {
-        self.0.write_error(msg)
+    fn write_error(&mut self, err: ClientError) {
+        self.0.write_error(format!("{}", err).as_str())
     }
 
     fn write_null(&mut self) {
