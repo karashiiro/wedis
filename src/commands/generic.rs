@@ -10,5 +10,5 @@ pub fn del(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
         return Ok(());
     }
 
-    db.delete(&args[1])
+    Ok(db.delete(&args[1])?)
 }
