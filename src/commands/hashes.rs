@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use anyhow::Result;
 use redcon::Conn;
 
-use crate::database::{Database, DatabaseOperations};
+use crate::database::{Database, DatabaseError, DatabaseOperations};
 
 #[tracing::instrument(skip_all)]
 pub fn hset(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
@@ -12,22 +10,18 @@ pub fn hset(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
         return Ok(());
     }
 
-    // TODO: Avoid relying on encoding values as UTF-8 strings
     // TODO: Handle multiple values
-    let key = &args[1];
-    let subkey1 = String::from_utf8_lossy(&args[2]).into_owned();
-    let subvalue1 = String::from_utf8_lossy(&args[3]).into_owned();
-
-    let mut dict = HashMap::new();
-    dict.insert(subkey1, subvalue1);
-
-    // TODO: Error if existing value does not represent a hash
-    // "WRONGTYPE Operation against a key holding the wrong kind of value"
-    let value = serde_json::to_string(&dict)?;
-    db.put(&key, value.as_bytes())?;
-
-    conn.write_integer(1);
-    Ok(())
+    match db.put_hash_field(&args[1], &args[2], &args[3]) {
+        Ok(()) => {
+            conn.write_integer(1);
+            Ok(())
+        }
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn
+                .write_error("WRONGTYPE Operation against a key holding the wrong kind of value"))
+        }
+        Err(err) => Err(err.into()),
+    }
 }
 
 #[tracing::instrument(skip_all)]
@@ -37,22 +31,15 @@ pub fn hget(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
         return Ok(());
     }
 
-    let key = &args[1];
-    match db.get(key)? {
-        Some(value) => {
-            let value = String::from_utf8_lossy(&value);
-            let dict: HashMap<String, String> = serde_json::from_str(&value)?;
-
-            let subkey = String::from_utf8_lossy(&args[2]).into_owned();
-            let value = dict.get(&subkey);
-
-            // TODO: Error if value does not represent a hash
-            // "WRONGTYPE Operation against a key holding the wrong kind of value"
-            match value {
-                Some(value) => Ok(conn.write_bulk(value.as_bytes())),
-                None => Ok(conn.write_null()),
-            }
+    match db.get_hash_field(&args[1], &args[2]) {
+        Ok(value) => match value {
+            Some(val) => Ok(conn.write_bulk(&val)),
+            None => Ok(conn.write_null()),
+        },
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn
+                .write_error("WRONGTYPE Operation against a key holding the wrong kind of value"))
         }
-        None => Ok(conn.write_null()),
+        Err(err) => Err(err.into()),
     }
 }
