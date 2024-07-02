@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use rocksdb::{ErrorKind, TransactionDB};
 use thiserror::Error;
 
+#[cfg(test)]
+use mockall::automock;
+
 const TYPE_KEY_PREFIX: &str = "t:";
 const DATA_KEY_PREFIX: &str = "d:";
 
@@ -27,6 +30,7 @@ pub struct Database {
     db: TransactionDB,
 }
 
+#[cfg_attr(test, automock)]
 pub trait DatabaseOperations {
     fn get_string(&self, key: &[u8]) -> Result<Option<Vec<u8>>, DatabaseError>;
 

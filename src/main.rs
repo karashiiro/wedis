@@ -4,7 +4,7 @@ mod database;
 mod known_issues;
 
 use anyhow::Result;
-use connection::ConnectionContext;
+use connection::{Client, Connection, ConnectionContext};
 use database::Database;
 use redcon::Conn;
 use rocksdb::{Options, TransactionDB, DB};
@@ -29,19 +29,20 @@ fn log_command(args: Vec<Vec<u8>>) {
 }
 
 fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
+    let mut conn = Client::new(conn);
     let name = String::from_utf8_lossy(&args[0]).to_uppercase();
 
     log_command(args.clone());
     match name.as_str() {
         "PING" => conn.write_string("PONG"),
-        "CLIENT" => commands::client(conn, &args),
-        "SET" => handle_result(commands::set(conn, db, &args)),
-        "GET" => handle_result(commands::get(conn, db, &args)),
-        "DEL" => handle_result(commands::del(conn, db, &args)),
-        "HSET" => handle_result(commands::hset(conn, db, &args)),
-        "HGET" => handle_result(commands::hget(conn, db, &args)),
+        "CLIENT" => commands::client(&mut conn, &args),
+        "SET" => handle_result(commands::set(&mut conn, db, &args)),
+        "GET" => handle_result(commands::get(&mut conn, db, &args)),
+        "DEL" => handle_result(commands::del(&mut conn, db, &args)),
+        "HSET" => handle_result(commands::hset(&mut conn, db, &args)),
+        "HGET" => handle_result(commands::hget(&mut conn, db, &args)),
         "SELECT" => conn.write_string("OK"),
-        "INFO" => commands::info(conn),
+        "INFO" => commands::info(&mut conn),
         _ => conn.write_error("ERR unknown command"),
     }
 }

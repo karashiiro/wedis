@@ -1,10 +1,16 @@
 use anyhow::Result;
-use redcon::Conn;
 
-use crate::database::{Database, DatabaseError, DatabaseOperations};
+use crate::{
+    connection::Connection,
+    database::{DatabaseError, DatabaseOperations},
+};
 
 #[tracing::instrument(skip_all)]
-pub fn hset(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
+pub fn hset(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
     if args.len() < 4 {
         conn.write_error("ERR wrong number of arguments for command");
         return Ok(());
@@ -25,7 +31,11 @@ pub fn hset(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
 }
 
 #[tracing::instrument(skip_all)]
-pub fn hget(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
+pub fn hget(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
     if args.len() < 3 {
         conn.write_error("ERR wrong number of arguments for command");
         return Ok(());

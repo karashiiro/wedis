@@ -1,10 +1,13 @@
 use anyhow::Result;
-use redcon::Conn;
 
-use crate::database::{Database, DatabaseOperations};
+use crate::{connection::Connection, database::DatabaseOperations};
 
 #[tracing::instrument(skip_all)]
-pub fn del(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
+pub fn del(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
     // TODO: Handle multiple values
     if args.len() != 2 {
         conn.write_error("ERR wrong number of arguments for command");

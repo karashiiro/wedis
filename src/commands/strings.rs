@@ -1,10 +1,16 @@
 use anyhow::Result;
-use redcon::Conn;
 
-use crate::database::{Database, DatabaseError, DatabaseOperations};
+use crate::{
+    connection::Connection,
+    database::{DatabaseError, DatabaseOperations},
+};
 
 #[tracing::instrument(skip_all)]
-pub fn set(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
+pub fn set(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
     if args.len() < 3 {
         conn.write_error("ERR wrong number of arguments for command");
         return Ok(());
@@ -17,7 +23,11 @@ pub fn set(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
 }
 
 #[tracing::instrument(skip_all)]
-pub fn get(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
+pub fn get(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
     if args.len() < 2 {
         conn.write_error("ERR wrong number of arguments for command");
         return Ok(());
@@ -33,5 +43,36 @@ pub fn get(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
                 .write_error("WRONGTYPE Operation against a key holding the wrong kind of value"))
         }
         Err(err) => Err(err.into()),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{connection::MockConnection, database::MockDatabaseOperations};
+    use mockall::predicate::*;
+
+    use super::*;
+
+    #[test]
+    fn test_get() {
+        let key = "key";
+        let value = "value";
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_get_string()
+            .with(eq(key.as_bytes()))
+            .times(1)
+            .returning(|_| Ok(Some(value.into())));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_bulk()
+            .with(eq(value.as_bytes()))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec!["GET".into(), key.into()];
+        let _ = get(&mut mock_conn, &mock_db, &args).unwrap();
     }
 }

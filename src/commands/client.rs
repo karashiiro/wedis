@@ -1,9 +1,7 @@
-use redcon::Conn;
-
-use crate::connection::ConnectionContext;
+use crate::connection::{Connection, ConnectionContext};
 
 #[tracing::instrument(skip_all)]
-pub fn client(conn: &mut Conn, args: &Vec<Vec<u8>>) {
+pub fn client(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
     if args.len() < 2 {
         conn.write_error("ERR wrong number of arguments for command");
         return;
@@ -11,7 +9,7 @@ pub fn client(conn: &mut Conn, args: &Vec<Vec<u8>>) {
 
     let subcommand = String::from_utf8_lossy(&args[1]).to_uppercase();
     match subcommand.as_str() {
-        "SETINFO" => match &mut conn.context {
+        "SETINFO" => match &mut conn.context() {
             Some(ctx) => {
                 if args.len() < 4 {
                     conn.write_error("ERR wrong number of arguments for command");

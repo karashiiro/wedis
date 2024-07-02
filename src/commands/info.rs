@@ -1,7 +1,7 @@
-use redcon::Conn;
+use crate::connection::Connection;
 
 #[tracing::instrument(skip_all)]
-pub fn info(conn: &mut Conn) {
+pub fn info(conn: &mut dyn Connection) {
     conn.write_bulk(
         concat_string!(
             "# Server\r\n",
