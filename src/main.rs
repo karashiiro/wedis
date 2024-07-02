@@ -7,7 +7,7 @@ use anyhow::Result;
 use connection::ConnectionContext;
 use database::Database;
 use redcon::Conn;
-use rocksdb::{Options, DB};
+use rocksdb::{Options, TransactionDB, DB};
 use tracing::{debug, error, info, Level};
 use tracing_subscriber;
 
@@ -53,7 +53,7 @@ fn main() {
 
     let path = ".wedis";
     {
-        let db_raw = DB::open_default(path).expect("Failed to open database");
+        let db_raw = TransactionDB::open_default(path).expect("Failed to open database");
         let db = Database::new(db_raw);
 
         let mut s = redcon::listen("127.0.0.1:6379", db).expect("Failed to start server");
