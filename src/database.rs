@@ -34,9 +34,9 @@ pub trait DatabaseOperations {
 
     fn put_string(&self, key: &[u8], value: &[u8]) -> Result<(), DatabaseError>;
 
-    fn put_hash_field(&self, key: &[u8], field: &[u8], value: &[u8]) -> Result<(), DatabaseError>;
+    fn put_hash_field(&self, key: &[u8], field: &[u8], value: &[u8]) -> Result<i64, DatabaseError>;
 
-    fn delete(&self, key: &[u8]) -> Result<(), DatabaseError>;
+    fn delete(&self, key: &[u8]) -> Result<i64, DatabaseError>;
 }
 
 impl Database {
@@ -107,6 +107,17 @@ impl Database {
 
         Ok(txn.commit()?)
     }
+
+    fn delete_typed_value<K: AsRef<[u8]>>(&self, key: K) -> Result<(), DatabaseError> {
+        let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
+        let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
+
+        let txn = self.db.transaction();
+        txn.delete(type_key)?;
+        txn.delete(data_key)?;
+
+        Ok(txn.commit()?)
+    }
 }
 
 impl DatabaseOperations for Database {
@@ -138,7 +149,7 @@ impl DatabaseOperations for Database {
         self.put_typed_value(key, value, TYPE_STRING)
     }
 
-    fn put_hash_field(&self, key: &[u8], field: &[u8], value: &[u8]) -> Result<(), DatabaseError> {
+    fn put_hash_field(&self, key: &[u8], field: &[u8], value: &[u8]) -> Result<i64, DatabaseError> {
         // TODO: Update existing hash instead of overwriting it
         let _ = self.get_typed_value(key, TYPE_HASH)?;
 
@@ -150,18 +161,19 @@ impl DatabaseOperations for Database {
         dict.insert(field, value);
 
         let value = serde_json::to_string(&dict)?;
-        self.db.put(&key, value.as_bytes())?;
+        self.put_typed_value(key, value, TYPE_HASH)?;
 
-        self.put_typed_value(key, value, TYPE_HASH)
+        Ok(1)
     }
 
-    fn delete(&self, key: &[u8]) -> Result<(), DatabaseError> {
-        match self.db.delete(key) {
-            Ok(_) => Ok(()),
-            Err(err) => match err.kind() {
-                ErrorKind::NotFound => Ok(()),
+    fn delete(&self, key: &[u8]) -> Result<i64, DatabaseError> {
+        match self.delete_typed_value(key) {
+            Ok(()) => Ok(1),
+            Err(DatabaseError::RocksDB(err)) => match err.kind() {
+                ErrorKind::NotFound => Ok(0),
                 _ => Err(err.into()),
             },
+            Err(err) => Err(err),
         }
     }
 }

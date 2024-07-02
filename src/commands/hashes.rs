@@ -12,8 +12,8 @@ pub fn hset(conn: &mut Conn, db: &Database, args: &Vec<Vec<u8>>) -> Result<()> {
 
     // TODO: Handle multiple values
     match db.put_hash_field(&args[1], &args[2], &args[3]) {
-        Ok(()) => {
-            conn.write_integer(1);
+        Ok(n_fields) => {
+            conn.write_integer(n_fields);
             Ok(())
         }
         Err(DatabaseError::WrongType { expected: _ }) => {
