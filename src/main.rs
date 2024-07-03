@@ -34,7 +34,9 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
 
     log_command(args.clone());
     match name.as_str() {
-        "PING" => conn.write_string("PONG"),
+        "QUIT" => commands::quit(&mut conn),
+        "PING" => commands::ping(&mut conn, &args),
+        "ECHO" => commands::echo(&mut conn, &args),
         "CLIENT" => commands::client(&mut conn, &args),
         "SET" => handle_result(commands::set(&mut conn, db, &args)),
         "GET" => handle_result(commands::get(&mut conn, db, &args)),

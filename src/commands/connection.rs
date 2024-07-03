@@ -35,3 +35,29 @@ pub fn client(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
 
     conn.write_string("OK")
 }
+
+#[tracing::instrument(skip_all)]
+pub fn echo(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
+    if args.len() != 2 {
+        conn.write_error(ClientError::ArgCount);
+        return;
+    }
+
+    conn.write_bulk(&args[1])
+}
+
+#[tracing::instrument(skip_all)]
+pub fn ping(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
+    if args.len() == 1 {
+        conn.write_string("PONG")
+    } else if args.len() == 2 {
+        conn.write_bulk(&args[1])
+    } else {
+        conn.write_error(ClientError::ArgCount)
+    }
+}
+
+#[tracing::instrument(skip_all)]
+pub fn quit(conn: &mut dyn Connection) {
+    conn.write_string("OK")
+}
