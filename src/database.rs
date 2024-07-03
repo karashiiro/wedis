@@ -38,7 +38,11 @@ pub trait DatabaseOperations {
 
     fn put_string(&self, key: &[u8], value: &[u8]) -> Result<(), DatabaseError>;
 
-    fn put_hash_field(&self, key: &[u8], field: &[u8], value: &[u8]) -> Result<i64, DatabaseError>;
+    fn put_hash_fields(
+        &self,
+        key: &[u8],
+        fields: Vec<(Vec<u8>, Vec<u8>)>,
+    ) -> Result<i64, DatabaseError>;
 
     fn delete(&self, key: &[u8]) -> Result<i64, DatabaseError>;
 }
@@ -153,21 +157,36 @@ impl DatabaseOperations for Database {
         self.put_typed_value(key, value, TYPE_STRING)
     }
 
-    fn put_hash_field(&self, key: &[u8], field: &[u8], value: &[u8]) -> Result<i64, DatabaseError> {
-        // TODO: Update existing hash instead of overwriting it
-        let _ = self.get_typed_value(key, TYPE_HASH)?;
+    fn put_hash_fields(
+        &self,
+        key: &[u8],
+        fields: Vec<(Vec<u8>, Vec<u8>)>,
+    ) -> Result<i64, DatabaseError> {
+        // TODO: Update existing hash atomically
+        let existing = self.get_typed_value(key, TYPE_HASH)?;
 
-        // TODO: Avoid relying on encoding values as UTF-8 strings
-        let field = String::from_utf8_lossy(field).into_owned();
-        let value = String::from_utf8_lossy(value).into_owned();
+        let mut dict = match existing {
+            Some(data) => {
+                let hash = String::from_utf8_lossy(&data);
+                let dict: HashMap<String, String> = serde_json::from_str(&hash)?;
+                dict
+            }
+            None => HashMap::new(),
+        };
 
-        let mut dict = HashMap::new();
-        dict.insert(field, value);
+        let mut n_fields = 0;
+        for (field, value) in fields {
+            // TODO: Avoid relying on encoding values as UTF-8 strings
+            let field = String::from_utf8_lossy(&field).into_owned();
+            let value = String::from_utf8_lossy(&value).into_owned();
+            dict.insert(field, value);
+            n_fields += 1;
+        }
 
         let value = serde_json::to_string(&dict)?;
         self.put_typed_value(key, value, TYPE_HASH)?;
 
-        Ok(1)
+        Ok(n_fields)
     }
 
     fn delete(&self, key: &[u8]) -> Result<i64, DatabaseError> {
