@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use rocksdb::{ErrorKind, TransactionDB};
+use rocksdb::{ErrorKind, Transaction, TransactionDB};
 use thiserror::Error;
 
 #[cfg(test)]
@@ -74,6 +74,18 @@ impl Database {
             })
     }
 
+    fn get_pair_for_update<K: AsRef<[u8]>>(
+        &self,
+        txn: &Transaction<TransactionDB>,
+        key1: K,
+        key2: K,
+        exclusive: bool,
+    ) -> Result<Vec<Option<Vec<u8>>>, rocksdb::Error> {
+        let val1 = txn.get_for_update(key1, exclusive)?;
+        let val2 = txn.get_for_update(key2, exclusive)?;
+        Ok(vec![val1, val2])
+    }
+
     fn get_typed_value<K: AsRef<[u8]>>(
         &self,
         key: K,
@@ -82,26 +94,42 @@ impl Database {
         let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
         let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
 
-        let results = self.get_pair(type_key, data_key);
-        match results {
-            Ok(v) => {
-                let type_value = v[0].as_ref();
-                match type_value {
-                    Some(tv) => {
-                        let data_value = v[1].clone();
-                        if !tv.eq_ignore_ascii_case(type_id.as_bytes()) {
-                            Err(DatabaseError::WrongType {
-                                expected: type_id.to_string(),
-                            })
-                        } else {
-                            Ok(data_value)
-                        }
-                    }
-                    None => Ok(None),
+        let results = self.get_pair(type_key, data_key)?;
+        Self::validate_typed_value(results, type_id)
+    }
+
+    fn get_typed_value_for_update<K: AsRef<[u8]>>(
+        &self,
+        txn: &Transaction<TransactionDB>,
+        key: K,
+        type_id: &str,
+        exclusive: bool,
+    ) -> Result<Option<Vec<u8>>, DatabaseError> {
+        let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
+        let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
+
+        let results = self.get_pair_for_update(txn, type_key, data_key, exclusive)?;
+        Self::validate_typed_value(results, type_id)
+    }
+
+    fn validate_typed_value(
+        pair: Vec<Option<Vec<u8>>>,
+        type_id: &str,
+    ) -> Result<Option<Vec<u8>>, DatabaseError> {
+        let type_value = pair[0].as_ref();
+        type_value.map_or_else(
+            || Ok(None),
+            |tv| {
+                let data_value = pair[1].clone();
+                if !tv.eq_ignore_ascii_case(type_id.as_bytes()) {
+                    Err(DatabaseError::WrongType {
+                        expected: type_id.to_string(),
+                    })
+                } else {
+                    Ok(data_value)
                 }
-            }
-            Err(err) => Err(DatabaseError::RocksDB(err)),
-        }
+            },
+        )
     }
 
     fn put_typed_value<K: AsRef<[u8]>, V: AsRef<[u8]>>(
@@ -110,14 +138,25 @@ impl Database {
         value: V,
         type_id: &str,
     ) -> Result<(), DatabaseError> {
+        let txn = self.db.transaction();
+        self.put_typed_value_txn(&txn, key, value, type_id)?;
+        Ok(txn.commit()?)
+    }
+
+    fn put_typed_value_txn<K: AsRef<[u8]>, V: AsRef<[u8]>>(
+        &self,
+        txn: &Transaction<TransactionDB>,
+        key: K,
+        value: V,
+        type_id: &str,
+    ) -> Result<(), DatabaseError> {
         let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
         let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
 
-        let txn = self.db.transaction();
         txn.put(type_key, type_id.as_bytes())?;
         txn.put(data_key, value)?;
 
-        Ok(txn.commit()?)
+        Ok(())
     }
 
     fn delete_typed_value<K: AsRef<[u8]>>(&self, key: K) -> Result<(), DatabaseError> {
@@ -194,12 +233,9 @@ impl DatabaseOperations for Database {
     }
 
     fn increment_by(&self, key: &[u8], amount: i64) -> Result<i64, DatabaseError> {
-        let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
-        let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
-
         let txn = self.db.transaction();
-        let current_value = txn
-            .get_for_update(data_key.clone(), true)?
+        let current_value = self
+            .get_typed_value_for_update(&txn, key, TYPE_STRING, true)?
             .unwrap_or_else(|| "0".as_bytes().to_vec());
 
         // This needs to be a valid UTF-8 string in order to parse it
@@ -207,10 +243,7 @@ impl DatabaseOperations for Database {
         let current_value = current_value.parse::<i64>()?;
         let next_value = current_value + amount;
 
-        txn.put(type_key, TYPE_STRING.as_bytes())?;
-        txn.put(data_key, next_value.to_string().as_bytes())?;
-
-        txn.commit()?;
+        self.put_typed_value_txn(&txn, key, next_value.to_string().as_bytes(), TYPE_STRING)?;
 
         Ok(next_value)
     }
