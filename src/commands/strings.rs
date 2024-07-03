@@ -160,4 +160,94 @@ mod test {
         let args: Vec<Vec<u8>> = vec!["GET".into(), key.into()];
         let _ = get(&mut mock_conn, &mock_db, &args).unwrap();
     }
+
+    #[test]
+    fn test_incr() {
+        let key = "key";
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_increment_by()
+            .with(eq(key.as_bytes()), eq(1))
+            .times(1)
+            .returning(|_, _| Ok(2));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_integer()
+            .with(eq(2))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec!["INCR".into(), key.into()];
+        let _ = incr(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_incrby() {
+        let key = "key";
+        let amount = 3;
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_increment_by()
+            .with(eq(key.as_bytes()), eq(amount))
+            .times(1)
+            .returning(|_, _| Ok(5));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_integer()
+            .with(eq(5))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec!["INCRBY".into(), key.into(), amount.to_string().into()];
+        let _ = incrby(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_decr() {
+        let key = "key";
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_increment_by()
+            .with(eq(key.as_bytes()), eq(-1))
+            .times(1)
+            .returning(|_, _| Ok(0));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_integer()
+            .with(eq(0))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec!["DECR".into(), key.into()];
+        let _ = decr(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_decrby() {
+        let key = "key";
+        let amount = 3;
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_increment_by()
+            .with(eq(key.as_bytes()), eq(-amount))
+            .times(1)
+            .returning(|_, _| Ok(1));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_integer()
+            .with(eq(1))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec!["DECRBY".into(), key.into(), amount.to_string().into()];
+        let _ = decrby(&mut mock_conn, &mock_db, &args).unwrap();
+    }
 }
