@@ -205,8 +205,8 @@ impl DatabaseOperations for Database {
         key: &[u8],
         fields: Vec<(Vec<u8>, Vec<u8>)>,
     ) -> Result<i64, DatabaseError> {
-        // TODO: Update existing hash atomically
-        let existing = self.get_typed_value(key, TYPE_HASH)?;
+        let txn = self.db.transaction();
+        let existing = self.get_typed_value_for_update(&txn, key, TYPE_HASH, true)?;
 
         let mut dict = match existing {
             Some(data) => {
@@ -227,7 +227,9 @@ impl DatabaseOperations for Database {
         }
 
         let value = serde_json::to_string(&dict)?;
-        self.put_typed_value(key, value, TYPE_HASH)?;
+        self.put_typed_value_txn(&txn, key, value, TYPE_HASH)?;
+
+        txn.commit()?;
 
         Ok(n_fields)
     }
@@ -244,6 +246,8 @@ impl DatabaseOperations for Database {
         let next_value = current_value + amount;
 
         self.put_typed_value_txn(&txn, key, next_value.to_string().as_bytes(), TYPE_STRING)?;
+
+        txn.commit()?;
 
         Ok(next_value)
     }
