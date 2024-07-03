@@ -22,6 +22,8 @@ pub enum DatabaseError {
     RocksDB(#[from] rocksdb::Error),
     #[error("serialization error")]
     Serde(#[from] serde_json::Error),
+    #[error("integer parse error")]
+    ParseInt(#[from] std::num::ParseIntError),
     #[error("unexpected value type (expected {expected:?})")]
     WrongType { expected: String },
 }
@@ -43,6 +45,8 @@ pub trait DatabaseOperations {
         key: &[u8],
         fields: Vec<(Vec<u8>, Vec<u8>)>,
     ) -> Result<i64, DatabaseError>;
+
+    fn increment_by(&self, key: &[u8], amount: i64) -> Result<i64, DatabaseError>;
 
     fn delete(&self, key: &[u8]) -> Result<i64, DatabaseError>;
 }
@@ -187,6 +191,28 @@ impl DatabaseOperations for Database {
         self.put_typed_value(key, value, TYPE_HASH)?;
 
         Ok(n_fields)
+    }
+
+    fn increment_by(&self, key: &[u8], amount: i64) -> Result<i64, DatabaseError> {
+        let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
+        let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
+
+        let txn = self.db.transaction();
+        let current_value = txn
+            .get_for_update(data_key.clone(), true)?
+            .unwrap_or_else(|| "0".as_bytes().to_vec());
+
+        // This needs to be a valid UTF-8 string in order to parse it
+        let current_value = String::from_utf8_lossy(&current_value).into_owned();
+        let current_value = current_value.parse::<i64>()?;
+        let next_value = current_value + amount;
+
+        txn.put(type_key, TYPE_STRING.as_bytes())?;
+        txn.put(data_key, next_value.to_string().as_bytes())?;
+
+        txn.commit()?;
+
+        Ok(next_value)
     }
 
     fn delete(&self, key: &[u8]) -> Result<i64, DatabaseError> {
