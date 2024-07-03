@@ -3,6 +3,8 @@ mod connection;
 mod database;
 mod known_issues;
 
+use std::sync::{Arc, Mutex};
+
 use anyhow::Result;
 use connection::{Client, ClientError, Connection, ConnectionContext};
 use database::Database;
@@ -61,19 +63,21 @@ fn main() {
     let path = ".wedis";
     {
         let db_raw = TransactionDB::open_default(path).expect("Failed to open database");
-        let db = Database::new(db_raw);
+        let db = Arc::new(Mutex::new(Database::new(db_raw)));
 
         let mut s = redcon::listen("127.0.0.1:6379", db).expect("Failed to start server");
-        s.opened = Some(|conn, _db| {
+        s.opened = Some(|conn, db| {
             info!("Got new connection from {}", conn.addr());
-            conn.context = Some(Box::new(ConnectionContext::new()));
+
+            let connection_id = db.lock().unwrap().acquire_connection();
+            conn.context = Some(Box::new(ConnectionContext::new(connection_id)));
         });
         s.closed = Some(|_conn, _db, err| {
             if let Some(err) = err {
                 error!("{}", err)
             }
         });
-        s.command = Some(handle_command);
+        s.command = Some(|conn, db, args| handle_command(conn, &db.lock().unwrap(), args));
         info!("Serving at {}", s.local_addr());
 
         known_issues::warn_known_issues();

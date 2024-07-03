@@ -8,6 +8,8 @@ use mockall::automock;
 
 #[derive(Error, Debug)]
 pub enum ClientError {
+    #[error("ERR no context")]
+    NoContext,
     #[error("ERR unknown command")]
     UnknownCommand,
     #[error("ERR unknown attribute")]
@@ -19,15 +21,19 @@ pub enum ClientError {
 }
 
 pub struct ConnectionContext {
+    id: i64,
     lib_name: String,
     lib_version: String,
+    connection_name: Option<String>,
 }
 
 impl ConnectionContext {
-    pub fn new() -> Self {
+    pub fn new(id: i64) -> Self {
         ConnectionContext {
+            id,
             lib_name: "".to_string(),
             lib_version: "".to_string(),
+            connection_name: None,
         }
     }
 
@@ -37,6 +43,18 @@ impl ConnectionContext {
 
     pub fn set_lib_version(&mut self, lib_version: &str) {
         self.lib_version = lib_version.to_owned()
+    }
+
+    pub fn set_connection_name(&mut self, connection_name: &str) {
+        self.connection_name = Some(connection_name.to_owned())
+    }
+
+    pub fn connection_name(&self) -> Option<String> {
+        self.connection_name.clone()
+    }
+
+    pub fn id(&self) -> i64 {
+        self.id
     }
 }
 

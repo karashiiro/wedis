@@ -29,6 +29,7 @@ pub enum DatabaseError {
 }
 
 pub struct Database {
+    connect_count: i64,
     db: TransactionDB,
 }
 
@@ -53,7 +54,16 @@ pub trait DatabaseOperations {
 
 impl Database {
     pub fn new(db: TransactionDB) -> Self {
-        Self { db }
+        Self {
+            db,
+            connect_count: 0,
+        }
+    }
+
+    pub fn acquire_connection(&mut self) -> i64 {
+        let current = self.connect_count;
+        self.connect_count += 1;
+        current
     }
 
     fn get_pair<K: AsRef<[u8]>>(
