@@ -45,6 +45,92 @@ pub fn get(
     }
 }
 
+#[tracing::instrument(skip_all)]
+pub fn incr(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 2 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    match db.increment_by(&args[1], 1) {
+        Ok(value) => Ok(conn.write_integer(value)),
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+pub fn incrby(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 3 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let amount = String::from_utf8_lossy(&args[2])
+        .into_owned()
+        .parse::<i64>()?;
+    match db.increment_by(&args[1], amount) {
+        Ok(value) => Ok(conn.write_integer(value)),
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+pub fn decr(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 2 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    match db.increment_by(&args[1], -1) {
+        Ok(value) => Ok(conn.write_integer(value)),
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+pub fn decrby(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 3 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let amount = String::from_utf8_lossy(&args[2])
+        .into_owned()
+        .parse::<i64>()?;
+    match db.increment_by(&args[1], -amount) {
+        Ok(value) => Ok(conn.write_integer(value)),
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::{connection::MockConnection, database::MockDatabaseOperations};
