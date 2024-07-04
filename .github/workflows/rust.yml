@@ -16,6 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Use nightly Rust compiler
+      run: rustup default nightly
     - name: Install llvm-tools-preview
       run: rustup component add llvm-tools-preview
     - name: Install grcov
