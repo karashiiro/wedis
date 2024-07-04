@@ -16,6 +16,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Install llvm-tools-preview
+      run: rustup component add llvm-tools-preview
+    - name: Install grcov
+      run: cargo install grcov
     - name: Build
       run: cargo build --verbose
       env:
@@ -24,6 +28,8 @@ jobs:
       run: cargo test --verbose
       env:
         LLVM_PROFILE_FILE: "wedis-%p-%m.profraw"
+    - name: Generate coverage reports
+      run: grcov . --binary-path ./target/debug/ -s . -t lcov --branch --ignore-not-existing --ignore "/*" -o lcov.info
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v4.0.1
       with:
