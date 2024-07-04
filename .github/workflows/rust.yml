@@ -20,6 +20,16 @@ jobs:
       run: rustup component add llvm-tools-preview
     - name: Install grcov
       run: cargo install grcov
+    - name: Configure cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: wedis-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Build
       run: cargo build --verbose
       env:
@@ -28,6 +38,7 @@ jobs:
       run: cargo test --verbose
       env:
         LLVM_PROFILE_FILE: "wedis-%p-%m.profraw"
+        RUSTFLAGS: "-Cinstrument-coverage"
     - name: Generate coverage reports
       run: grcov . --binary-path ./target/debug/ -s . -t lcov --branch --ignore-not-existing --ignore "/*" -o lcov.info
     - name: Upload coverage reports to Codecov
