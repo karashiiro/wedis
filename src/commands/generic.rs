@@ -1,9 +1,19 @@
 use anyhow::Result;
+use tracing::debug;
 
 use crate::{
     connection::{ClientError, Connection},
     database::DatabaseOperations,
 };
+
+#[tracing::instrument(skip_all)]
+pub fn unlink(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    del(conn, db, args)
+}
 
 #[tracing::instrument(skip_all)]
 pub fn del(
@@ -21,6 +31,8 @@ pub fn del(
         n_deleted += db.delete(&arg)?;
     }
 
+    debug!("Deleted {} values", n_deleted);
+
     conn.write_integer(n_deleted);
     Ok(())
 }
@@ -37,6 +49,7 @@ pub fn exists(
     }
 
     let n_exists = db.exists(&args[1..].to_vec())?;
+    debug!("{} queried values exist", n_exists);
 
     conn.write_integer(n_exists);
     Ok(())
