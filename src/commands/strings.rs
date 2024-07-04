@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use tracing::debug;
 
@@ -18,6 +20,28 @@ pub fn set(
     }
 
     db.put_string(&args[1], &args[2])?;
+
+    conn.write_string("OK");
+    Ok(())
+}
+
+#[tracing::instrument(skip_all)]
+pub fn setex(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 4 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    let secs = String::from_utf8_lossy(&args[2]).parse::<u64>()?;
+    let expires_in = Duration::from_secs(secs);
+
+    db.put_string(key, &args[3])?;
+    db.put_expiry(key, expires_in)?;
 
     conn.write_string("OK");
     Ok(())

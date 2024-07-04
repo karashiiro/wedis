@@ -1,11 +1,15 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
+use itertools::Itertools;
 use rocksdb::{Transaction, TransactionDB};
 use thiserror::Error;
 
 #[cfg(test)]
 use mockall::automock;
 
+use crate::time::{parse_timestamp, serialize_duration_as_timestamp, unix_timestamp, TimeError};
+
+const TTL_KEY_PREFIX: &str = "T:";
 const TYPE_KEY_PREFIX: &str = "t:";
 const DATA_KEY_PREFIX: &str = "d:";
 
@@ -24,6 +28,8 @@ pub enum DatabaseError {
     Serde(#[from] serde_json::Error),
     #[error("integer parse error")]
     ParseInt(#[from] std::num::ParseIntError),
+    #[error("time error")]
+    InvalidTime(#[from] TimeError),
     #[error("unexpected value type (expected {expected:?})")]
     WrongType { expected: String },
 }
@@ -39,6 +45,8 @@ pub trait DatabaseOperations {
 
     fn get_hash_field(&self, key: &[u8], field: &[u8]) -> Result<Option<Vec<u8>>, DatabaseError>;
 
+    fn get_expiry(&self, key: &[u8]) -> Result<Option<Duration>, DatabaseError>;
+
     fn put_string(&self, key: &[u8], value: &[u8]) -> Result<(), DatabaseError>;
 
     fn put_hash_fields(
@@ -47,12 +55,16 @@ pub trait DatabaseOperations {
         fields: Vec<(Vec<u8>, Vec<u8>)>,
     ) -> Result<i64, DatabaseError>;
 
+    fn put_expiry(&self, key: &[u8], expires_in: Duration) -> Result<(), DatabaseError>;
+
     fn exists(&self, key: &[u8]) -> Result<i64, DatabaseError>;
 
     fn increment_by(&self, key: &[u8], amount: i64) -> Result<i64, DatabaseError>;
 
     fn delete(&self, key: &[u8]) -> Result<i64, DatabaseError>;
 }
+
+trait RString = AsRef<[u8]>;
 
 impl Database {
     pub fn new(db: TransactionDB) -> Self {
@@ -68,49 +80,92 @@ impl Database {
         current
     }
 
-    fn get_pair<K: AsRef<[u8]>>(
+    fn put_expiry<K: RString>(&self, key: K, expires_in: Duration) -> Result<(), DatabaseError> {
+        let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
+        let ttl_key = prepend_key(key.as_ref(), TTL_KEY_PREFIX.as_bytes());
+        let ttl_ms = serialize_duration_as_timestamp(expires_in)?;
+
+        // Begin a transaction on the data key to ensure we don't set
+        // a TTL while the value is being replaced.
+        let txn = self.db.transaction();
+        txn.get_for_update(data_key, true)?;
+
+        // Set the TTL
+        txn.put(ttl_key, ttl_ms)?;
+
+        Ok(txn.commit()?)
+    }
+
+    fn get_expiry<K: RString>(&self, key: K) -> Result<Option<Duration>, DatabaseError> {
+        let ttl_key = prepend_key(key.as_ref(), TTL_KEY_PREFIX.as_bytes());
+        let ttl = self.db.get(ttl_key)?;
+
+        match ttl {
+            Some(ttl) => Ok(Some(
+                parse_timestamp(&ttl)?.saturating_sub(unix_timestamp()?),
+            )),
+            None => Ok(None),
+        }
+    }
+
+    fn get_triple<K: RString>(
         &self,
         key1: K,
         key2: K,
-    ) -> Result<Vec<Option<Vec<u8>>>, rocksdb::Error> {
-        self.db
-            .multi_get([key1, key2])
-            .into_iter()
-            .fold(Ok(vec![]), |agg, next| {
-                agg.and_then(|mut results| {
-                    next.and_then(|value| {
-                        results.push(value);
-                        Ok(results)
+        key3: K,
+    ) -> Result<(Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>), rocksdb::Error> {
+        let result =
+            self.db
+                .multi_get([key1, key2, key3])
+                .into_iter()
+                .fold(Ok(vec![]), |agg, next| {
+                    agg.and_then(|mut results| {
+                        next.and_then(|value| {
+                            results.push(value);
+                            Ok(results)
+                        })
                     })
-                })
-            })
+                })?;
+
+        // This will always succeed if we reach this point
+        Ok(result.into_iter().next_tuple::<(_, _, _)>().unwrap())
     }
 
-    fn get_pair_for_update<K: AsRef<[u8]>>(
+    fn get_triple_for_update<K: RString>(
         &self,
         txn: &Transaction<TransactionDB>,
         key1: K,
         key2: K,
+        key3: K,
         exclusive: bool,
-    ) -> Result<Vec<Option<Vec<u8>>>, rocksdb::Error> {
+    ) -> Result<(Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>), rocksdb::Error> {
         let val1 = txn.get_for_update(key1, exclusive)?;
         let val2 = txn.get_for_update(key2, exclusive)?;
-        Ok(vec![val1, val2])
+        let val3 = txn.get_for_update(key3, exclusive)?;
+        Ok((val1, val2, val3))
     }
 
-    fn get_typed_value<K: AsRef<[u8]>>(
+    fn get_typed_value<K: RString>(
         &self,
         key: K,
         type_id: &str,
     ) -> Result<Option<Vec<u8>>, DatabaseError> {
         let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
         let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
+        let ttl_key = prepend_key(key.as_ref(), TTL_KEY_PREFIX.as_bytes());
 
-        let results = self.get_pair(type_key, data_key)?;
-        Self::validate_typed_value(results, type_id)
+        let (type_value, data_value, ttl_value) = self.get_triple(type_key, data_key, ttl_key)?;
+        if let Some(ttl) = ttl_value {
+            let ttl = parse_timestamp(&ttl)?.saturating_sub(unix_timestamp()?);
+            if ttl == Duration::ZERO {
+                return Ok(None);
+            }
+        }
+
+        Self::validate_typed_value(&type_value, type_id).and_then(|_| Ok(data_value))
     }
 
-    fn get_typed_value_for_update<K: AsRef<[u8]>>(
+    fn get_typed_value_for_update<K: RString>(
         &self,
         txn: &Transaction<TransactionDB>,
         key: K,
@@ -119,32 +174,39 @@ impl Database {
     ) -> Result<Option<Vec<u8>>, DatabaseError> {
         let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
         let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
+        let ttl_key = prepend_key(key.as_ref(), TTL_KEY_PREFIX.as_bytes());
 
-        let results = self.get_pair_for_update(txn, type_key, data_key, exclusive)?;
-        Self::validate_typed_value(results, type_id)
+        let (type_value, data_value, ttl_value) =
+            self.get_triple_for_update(txn, type_key, data_key, ttl_key, exclusive)?;
+        if let Some(ttl) = ttl_value {
+            let ttl = parse_timestamp(&ttl)?.saturating_sub(unix_timestamp()?);
+            if ttl == Duration::ZERO {
+                return Ok(None);
+            }
+        }
+
+        Self::validate_typed_value(&type_value, type_id).and_then(|_| Ok(data_value))
     }
 
     fn validate_typed_value(
-        pair: Vec<Option<Vec<u8>>>,
-        type_id: &str,
-    ) -> Result<Option<Vec<u8>>, DatabaseError> {
-        let type_value = pair[0].as_ref();
-        type_value.map_or_else(
-            || Ok(None),
+        type_value: &Option<Vec<u8>>,
+        expected_type_id: &str,
+    ) -> Result<(), DatabaseError> {
+        type_value.as_ref().map_or_else(
+            || Ok(()),
             |tv| {
-                let data_value = pair[1].clone();
-                if !tv.eq_ignore_ascii_case(type_id.as_bytes()) {
+                if !tv.eq_ignore_ascii_case(expected_type_id.as_bytes()) {
                     Err(DatabaseError::WrongType {
-                        expected: type_id.to_string(),
+                        expected: expected_type_id.to_string(),
                     })
                 } else {
-                    Ok(data_value)
+                    Ok(())
                 }
             },
         )
     }
 
-    fn put_typed_value<K: AsRef<[u8]>, V: AsRef<[u8]>>(
+    fn put_typed_value<K: RString, V: RString>(
         &self,
         key: K,
         value: V,
@@ -155,7 +217,7 @@ impl Database {
         Ok(txn.commit()?)
     }
 
-    fn put_typed_value_txn<K: AsRef<[u8]>, V: AsRef<[u8]>>(
+    fn put_typed_value_txn<K: RString, V: RString>(
         &self,
         txn: &Transaction<TransactionDB>,
         key: K,
@@ -164,30 +226,32 @@ impl Database {
     ) -> Result<(), DatabaseError> {
         let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
         let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
+        let ttl_key = prepend_key(key.as_ref(), TTL_KEY_PREFIX.as_bytes());
 
         txn.put(type_key, type_id.as_bytes())?;
         txn.put(data_key, value)?;
+        txn.delete(ttl_key)?;
 
         Ok(())
     }
 
-    fn delete_typed_value<K: AsRef<[u8]>>(&self, key: K) -> Result<(), DatabaseError> {
+    fn delete_typed_value<K: RString>(&self, key: K) -> Result<(), DatabaseError> {
         let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
         let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
+        let ttl_key = prepend_key(key.as_ref(), TTL_KEY_PREFIX.as_bytes());
 
         let txn = self.db.transaction();
         txn.delete(type_key)?;
         txn.delete(data_key)?;
+        txn.delete(ttl_key)?;
 
         Ok(txn.commit()?)
     }
 
-    fn exists<K: AsRef<[u8]>>(&self, key: K) -> Result<bool, DatabaseError> {
+    fn exists<K: RString>(&self, key: K) -> Result<bool, DatabaseError> {
         let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
-        let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
-
-        let results = self.get_pair(type_key, data_key)?;
-        match results[0] {
+        let type_value = self.db.get(type_key)?;
+        match type_value {
             Some(_) => Ok(true),
             None => Ok(false),
         }
@@ -217,6 +281,10 @@ impl DatabaseOperations for Database {
 
         let value = value.unwrap();
         Ok(Some(value.as_bytes().to_vec()))
+    }
+
+    fn get_expiry(&self, key: &[u8]) -> Result<Option<Duration>, DatabaseError> {
+        self.get_expiry(key)
     }
 
     fn put_string(&self, key: &[u8], value: &[u8]) -> Result<(), DatabaseError> {
@@ -255,6 +323,10 @@ impl DatabaseOperations for Database {
         txn.commit()?;
 
         Ok(n_fields)
+    }
+
+    fn put_expiry(&self, key: &[u8], expires_in: Duration) -> Result<(), DatabaseError> {
+        self.put_expiry(key, expires_in)
     }
 
     fn exists(&self, key: &[u8]) -> Result<i64, DatabaseError> {

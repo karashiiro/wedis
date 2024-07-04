@@ -1,7 +1,10 @@
+#![feature(trait_alias)]
+
 mod commands;
 mod connection;
 mod database;
 mod known_issues;
+mod time;
 
 use std::sync::{Arc, Mutex};
 
@@ -41,6 +44,7 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "ECHO" => commands::echo(&mut conn, &args),
         "CLIENT" => commands::client(&mut conn, &args),
         "SET" => handle_result(commands::set(&mut conn, db, &args)),
+        "SETEX" => handle_result(commands::setex(&mut conn, db, &args)),
         "GET" => handle_result(commands::get(&mut conn, db, &args)),
         "INCR" => handle_result(commands::incr(&mut conn, db, &args)),
         "INCRBY" => handle_result(commands::incrby(&mut conn, db, &args)),
@@ -49,6 +53,10 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "DEL" => handle_result(commands::del(&mut conn, db, &args)),
         "UNLINK" => handle_result(commands::unlink(&mut conn, db, &args)),
         "EXISTS" => handle_result(commands::exists(&mut conn, db, &args)),
+        "EXPIRE" => handle_result(commands::expire(&mut conn, db, &args)),
+        "TTL" => handle_result(commands::ttl(&mut conn, db, &args)),
+        "PEXPIRE" => handle_result(commands::pexpire(&mut conn, db, &args)),
+        "PTTL" => handle_result(commands::pttl(&mut conn, db, &args)),
         "HSET" => handle_result(commands::hset(&mut conn, db, &args)),
         "HGET" => handle_result(commands::hget(&mut conn, db, &args)),
         "SELECT" => conn.write_string("OK"),

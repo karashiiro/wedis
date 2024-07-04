@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::Result;
 use tracing::debug;
 
@@ -5,6 +7,114 @@ use crate::{
     connection::{ClientError, Connection},
     database::DatabaseOperations,
 };
+
+#[tracing::instrument(skip_all)]
+pub fn expire(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() < 3 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    let secs = String::from_utf8_lossy(&args[2]).parse::<u64>()?;
+    let expires_in = Duration::from_secs(secs);
+
+    match db.put_expiry(&key, expires_in) {
+        Ok(_) => {
+            conn.write_integer(1);
+            Ok(())
+        }
+        Err(err) => {
+            conn.write_integer(0);
+            Err(err.into())
+        }
+    }
+}
+
+#[tracing::instrument(skip_all)]
+pub fn pexpire(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() < 3 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    let ms = String::from_utf8_lossy(&args[2]).parse::<u64>()?;
+    let expires_in = Duration::from_millis(ms);
+
+    match db.put_expiry(&key, expires_in) {
+        Ok(_) => {
+            conn.write_integer(1);
+            Ok(())
+        }
+        Err(err) => {
+            conn.write_integer(0);
+            Err(err.into())
+        }
+    }
+}
+
+#[tracing::instrument(skip_all)]
+pub fn ttl(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 2 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+
+    let ttl = db.get_expiry(key)?;
+    if let None = ttl {
+        return match db.exists(key)? {
+            0 => Ok(conn.write_integer(-2)),
+            _ => Ok(conn.write_integer(-1)),
+        };
+    }
+
+    let ttl: i64 = ttl.unwrap().as_secs().try_into()?;
+    conn.write_integer(ttl);
+
+    Ok(())
+}
+
+#[tracing::instrument(skip_all)]
+pub fn pttl(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 2 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+
+    let ttl = db.get_expiry(key)?;
+    if let None = ttl {
+        return match db.exists(key)? {
+            0 => Ok(conn.write_integer(-2)),
+            _ => Ok(conn.write_integer(-1)),
+        };
+    }
+
+    let ttl: i64 = ttl.unwrap().as_millis().try_into()?;
+    conn.write_integer(ttl);
+
+    Ok(())
+}
 
 #[tracing::instrument(skip_all)]
 pub fn unlink(
