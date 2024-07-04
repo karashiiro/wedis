@@ -69,6 +69,62 @@ pub fn strlen(
     }
 }
 
+fn adjust_index(end_index: usize, x: i64) -> usize {
+    let iend_index: i64 = end_index.try_into().unwrap();
+    if x > iend_index {
+        end_index
+    } else if x >= 0 {
+        x.try_into().unwrap()
+    } else {
+        // x < 0
+        (iend_index + x + 1).try_into().unwrap()
+    }
+}
+
+fn adjust_indices(end_index: usize, start: i64, end: i64) -> (usize, usize) {
+    (adjust_index(end_index, start), adjust_index(end_index, end))
+}
+
+#[tracing::instrument(skip_all)]
+pub fn substr(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 4 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    let start = String::from_utf8_lossy(&args[2]).parse::<i64>()?;
+    let end = String::from_utf8_lossy(&args[3]).parse::<i64>()?;
+
+    match db.get_string(key) {
+        Ok(value) => match value {
+            Some(val) => {
+                if val.len() == 0 {
+                    return Ok(conn.write_bulk("".as_bytes()));
+                }
+
+                let (start, end) = adjust_indices(val.len() - 1, start, end);
+                if start < end {
+                    let result = &val[start..=end];
+                    debug!("Returning value {}", String::from_utf8_lossy(&result));
+                    Ok(conn.write_bulk(&result))
+                } else {
+                    Ok(conn.write_bulk("".as_bytes()))
+                }
+            }
+            None => Ok(conn.write_bulk("".as_bytes())),
+        },
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
 #[tracing::instrument(skip_all)]
 pub fn get(
     conn: &mut dyn Connection,
@@ -235,6 +291,110 @@ mod test {
 
         let args: Vec<Vec<u8>> = vec!["STRLEN".into(), key.into()];
         let _ = strlen(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_adjust_indices_negative() {
+        let end_index = 4;
+        let start = -3;
+        let end = -1;
+
+        let (start, end) = adjust_indices(end_index, start, end);
+        assert_eq!(2, start);
+        assert_eq!(4, end);
+    }
+
+    #[test]
+    fn test_substr() {
+        let key = "key";
+        let value = "value";
+
+        let start = 0;
+        let end = 2;
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_get_string()
+            .with(eq(key.as_bytes()))
+            .times(1)
+            .returning(|_| Ok(Some(value.into())));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_bulk()
+            .with(eq("val".as_bytes()))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec![
+            "SUBSTR".into(),
+            key.into(),
+            start.to_string().into(),
+            end.to_string().into(),
+        ];
+        let _ = substr(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_substr_negative() {
+        let key = "key";
+        let value = "value";
+
+        let start = -3;
+        let end = -1;
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_get_string()
+            .with(eq(key.as_bytes()))
+            .times(1)
+            .returning(|_| Ok(Some(value.into())));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_bulk()
+            .with(eq("lue".as_bytes()))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec![
+            "SUBSTR".into(),
+            key.into(),
+            start.to_string().into(),
+            end.to_string().into(),
+        ];
+        let _ = substr(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_substr_out_of_range() {
+        let key = "key";
+        let value = "value";
+
+        let start = 0;
+        let end = 10;
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_get_string()
+            .with(eq(key.as_bytes()))
+            .times(1)
+            .returning(|_| Ok(Some(value.into())));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_bulk()
+            .with(eq("value".as_bytes()))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec![
+            "SUBSTR".into(),
+            key.into(),
+            start.to_string().into(),
+            end.to_string().into(),
+        ];
+        let _ = substr(&mut mock_conn, &mock_db, &args).unwrap();
     }
 
     #[test]
