@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use rocksdb::{ErrorKind, Transaction, TransactionDB};
+use rocksdb::{Transaction, TransactionDB};
 use thiserror::Error;
 
 #[cfg(test)]
@@ -181,6 +181,17 @@ impl Database {
 
         Ok(txn.commit()?)
     }
+
+    fn exists<K: AsRef<[u8]>>(&self, key: K) -> Result<bool, DatabaseError> {
+        let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
+        let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
+
+        let results = self.get_pair(type_key, data_key)?;
+        match results[0] {
+            Some(_) => Ok(true),
+            None => Ok(false),
+        }
+    }
 }
 
 impl DatabaseOperations for Database {
@@ -247,13 +258,9 @@ impl DatabaseOperations for Database {
     }
 
     fn exists(&self, key: &[u8]) -> Result<i64, DatabaseError> {
-        let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
-        let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
-
-        let results = self.get_pair(type_key, data_key)?;
-        match results[0] {
-            Some(_) => Ok(1),
-            None => Ok(0),
+        match self.exists(key)? {
+            true => Ok(1),
+            false => Ok(0),
         }
     }
 
@@ -276,13 +283,10 @@ impl DatabaseOperations for Database {
     }
 
     fn delete(&self, key: &[u8]) -> Result<i64, DatabaseError> {
-        match self.delete_typed_value(key) {
-            Ok(()) => Ok(1),
-            Err(DatabaseError::RocksDB(err)) => match err.kind() {
-                ErrorKind::NotFound => Ok(0),
-                _ => Err(err.into()),
-            },
-            Err(err) => Err(err),
+        if !self.exists(key)? {
+            return Ok(0);
         }
+
+        self.delete_typed_value(key).and_then(|_| Ok(1))
     }
 }
