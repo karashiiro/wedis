@@ -78,6 +78,8 @@ pub trait Connection {
 
     fn write_null(&mut self);
 
+    fn shutdown(&mut self);
+
     fn context(&mut self) -> &mut Option<Box<dyn Any>>;
 }
 
@@ -100,6 +102,10 @@ impl Connection for Client<'_> {
 
     fn write_null(&mut self) {
         self.0.write_null()
+    }
+
+    fn shutdown(&mut self) {
+        self.0.shutdown()
     }
 
     fn context(&mut self) -> &mut Option<Box<dyn Any>> {
