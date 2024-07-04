@@ -46,6 +46,7 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "SET" => handle_result(commands::set(&mut conn, db, &args)),
         "SETEX" => handle_result(commands::setex(&mut conn, db, &args)),
         "GET" => handle_result(commands::get(&mut conn, db, &args)),
+        "STRLEN" => handle_result(commands::strlen(&mut conn, db, &args)),
         "INCR" => handle_result(commands::incr(&mut conn, db, &args)),
         "INCRBY" => handle_result(commands::incrby(&mut conn, db, &args)),
         "DECR" => handle_result(commands::decr(&mut conn, db, &args)),

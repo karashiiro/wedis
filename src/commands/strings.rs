@@ -48,6 +48,28 @@ pub fn setex(
 }
 
 #[tracing::instrument(skip_all)]
+pub fn strlen(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 2 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    match db.get_string(&args[1]) {
+        Ok(value) => value
+            .map_or(Ok(0), |v| Ok(v.len()))
+            .and_then(|n| Ok(conn.write_integer(n.try_into().unwrap()))),
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+#[tracing::instrument(skip_all)]
 pub fn get(
     conn: &mut dyn Connection,
     db: &dyn DatabaseOperations,
@@ -190,6 +212,29 @@ mod test {
 
         let args: Vec<Vec<u8>> = vec!["GET".into(), key.into()];
         let _ = get(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_strlen() {
+        let key = "key";
+        let value = "value";
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_get_string()
+            .with(eq(key.as_bytes()))
+            .times(1)
+            .returning(|_| Ok(Some(value.into())));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_integer()
+            .with(eq(5))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec!["STRLEN".into(), key.into()];
+        let _ = strlen(&mut mock_conn, &mock_db, &args).unwrap();
     }
 
     #[test]
