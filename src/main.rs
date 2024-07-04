@@ -50,7 +50,7 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "HSET" => handle_result(commands::hset(&mut conn, db, &args)),
         "HGET" => handle_result(commands::hget(&mut conn, db, &args)),
         "SELECT" => conn.write_string("OK"),
-        "INFO" => commands::info(&mut conn),
+        "INFO" => commands::info(&mut conn, &args),
         _ => conn.write_error(ClientError::UnknownCommand),
     }
 }

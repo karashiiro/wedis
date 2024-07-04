@@ -1,7 +1,62 @@
 use crate::connection::Connection;
 
 #[tracing::instrument(skip_all)]
-pub fn info(conn: &mut dyn Connection) {
+pub fn info(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
+    if args.len() >= 2 {
+        let section = String::from_utf8_lossy(&args[1]).to_lowercase();
+        return match section.as_str() {
+            "replication" => conn.write_bulk(
+                concat_string!(
+                    "# Replication\r\n",
+                    "role:master\r\n",
+                    "connected_slaves:0\r\n",
+                    "master_failover_state:no-failover\r\n",
+                    "master_replid:92fef281b2fd4ad63906bd1724167c0a8051ac94\r\n",
+                    "master_replid2:0000000000000000000000000000000000000000\r\n",
+                    "master_repl_offset:0\r\n",
+                    "second_repl_offset:-1\r\n",
+                    "repl_backlog_active:0\r\n",
+                    "repl_backlog_size:1048576\r\n",
+                    "repl_backlog_first_byte_offset:0\r\n",
+                    "repl_backlog_histlen:0\r\n"
+                )
+                .as_bytes(),
+            ),
+            "server" => conn.write_bulk(
+                concat_string!(
+                    "# Server\r\n",
+                    "redis_version:7.2.5\r\n",
+                    "redis_git_sha1:00000000\r\n",
+                    "redis_git_dirty:0\r\n",
+                    "redis_build_id:affe2dab174e19c6\r\n",
+                    "redis_mode:standalone\r\n",
+                    "os:Linux 5.15.0-1015-aws x86_64\r\n",
+                    "arch_bits:64\r\n",
+                    "monotonic_clock:POSIX clock_gettime\r\n",
+                    "multiplexing_api:epoll\r\n",
+                    "atomicvar_api:c11-builtin\r\n",
+                    "gcc_version:10.2.1\r\n",
+                    "process_id:1\r\n",
+                    "process_supervised:no\r\n",
+                    "run_id:aefa5a2dac16d8c0afbf87b3c69eb466bb51828f\r\n",
+                    "tcp_port:6379\r\n",
+                    "server_time_usec:1719762080674117\r\n",
+                    "uptime_in_seconds:10700573\r\n",
+                    "uptime_in_days:123\r\n",
+                    "hz:10\r\n",
+                    "configured_hz:10\r\n",
+                    "lru_clock:8486048\r\n",
+                    "executable:/data/redis-server\r\n",
+                    "config_file:/etc/redis/redis.conf\r\n",
+                    "io_threads_active:0\r\n",
+                    "listener0:name=tcp,bind=*,bind=-::*,port=6379\r\n"
+                )
+                .as_bytes(),
+            ),
+            _ => (),
+        };
+    }
+
     conn.write_bulk(
         concat_string!(
             "# Server\r\n",
