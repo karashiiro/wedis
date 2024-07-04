@@ -114,6 +114,5 @@ pub fn ping(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
 
 #[tracing::instrument(skip_all)]
 pub fn quit(conn: &mut dyn Connection) {
-    conn.write_string("OK");
-    conn.shutdown();
+    conn.write_string("OK")
 }
