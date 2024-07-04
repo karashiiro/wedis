@@ -47,7 +47,7 @@ pub trait DatabaseOperations {
         fields: Vec<(Vec<u8>, Vec<u8>)>,
     ) -> Result<i64, DatabaseError>;
 
-    fn exists(&self, keys: &Vec<Vec<u8>>) -> Result<i64, DatabaseError>;
+    fn exists(&self, key: &[u8]) -> Result<i64, DatabaseError>;
 
     fn increment_by(&self, key: &[u8], amount: i64) -> Result<i64, DatabaseError>;
 
@@ -246,23 +246,15 @@ impl DatabaseOperations for Database {
         Ok(n_fields)
     }
 
-    fn exists(&self, keys: &Vec<Vec<u8>>) -> Result<i64, DatabaseError> {
-        let mut n_exists = 0;
-        for key_result in self.db.multi_get(keys) {
-            let item_result = match key_result {
-                Ok(_) => Ok(n_exists += 1),
-                Err(err) => match err.kind() {
-                    ErrorKind::NotFound => Ok(()),
-                    _ => Err(err),
-                },
-            };
+    fn exists(&self, key: &[u8]) -> Result<i64, DatabaseError> {
+        let type_key = prepend_key(key.as_ref(), TYPE_KEY_PREFIX.as_bytes());
+        let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
 
-            if let Err(err) = item_result {
-                return Err(err.into());
-            }
+        let results = self.get_pair(type_key, data_key)?;
+        match results[0] {
+            Some(_) => Ok(1),
+            None => Ok(0),
         }
-
-        Ok(n_exists)
     }
 
     fn increment_by(&self, key: &[u8], amount: i64) -> Result<i64, DatabaseError> {

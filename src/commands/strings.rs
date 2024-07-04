@@ -1,4 +1,5 @@
 use anyhow::Result;
+use tracing::debug;
 
 use crate::{
     connection::{ClientError, Connection},
@@ -35,8 +36,14 @@ pub fn get(
 
     match db.get_string(&args[1]) {
         Ok(value) => match value {
-            Some(val) => Ok(conn.write_bulk(&val)),
-            None => Ok(conn.write_null()),
+            Some(val) => {
+                debug!("Retrieved value {:?}", String::from_utf8_lossy(&val));
+                Ok(conn.write_bulk(&val))
+            }
+            None => {
+                debug!("Value does not exist");
+                Ok(conn.write_null())
+            }
         },
         Err(DatabaseError::WrongType { expected: _ }) => {
             Ok(conn.write_error(ClientError::WrongType))

@@ -48,7 +48,11 @@ pub fn exists(
         return Ok(());
     }
 
-    let n_exists = db.exists(&args[1..].to_vec())?;
+    let mut n_exists = 0;
+    for arg in args[1..].iter() {
+        n_exists += db.exists(&arg)?;
+    }
+
     debug!("{} queried values exist", n_exists);
 
     conn.write_integer(n_exists);
