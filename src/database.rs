@@ -47,6 +47,8 @@ pub trait DatabaseOperations {
         fields: Vec<(Vec<u8>, Vec<u8>)>,
     ) -> Result<i64, DatabaseError>;
 
+    fn exists(&self, keys: &Vec<Vec<u8>>) -> Result<i64, DatabaseError>;
+
     fn increment_by(&self, key: &[u8], amount: i64) -> Result<i64, DatabaseError>;
 
     fn delete(&self, key: &[u8]) -> Result<i64, DatabaseError>;
@@ -242,6 +244,25 @@ impl DatabaseOperations for Database {
         txn.commit()?;
 
         Ok(n_fields)
+    }
+
+    fn exists(&self, keys: &Vec<Vec<u8>>) -> Result<i64, DatabaseError> {
+        let mut n_exists = 0;
+        for key_result in self.db.multi_get(keys) {
+            let item_result = match key_result {
+                Ok(_) => Ok(n_exists += 1),
+                Err(err) => match err.kind() {
+                    ErrorKind::NotFound => Ok(()),
+                    _ => Err(err),
+                },
+            };
+
+            if let Err(err) = item_result {
+                return Err(err.into());
+            }
+        }
+
+        Ok(n_exists)
     }
 
     fn increment_by(&self, key: &[u8], amount: i64) -> Result<i64, DatabaseError> {

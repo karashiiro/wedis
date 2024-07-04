@@ -47,6 +47,7 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "DECR" => handle_result(commands::decr(&mut conn, db, &args)),
         "DECRBY" => handle_result(commands::decrby(&mut conn, db, &args)),
         "DEL" => handle_result(commands::del(&mut conn, db, &args)),
+        "EXISTS" => handle_result(commands::exists(&mut conn, db, &args)),
         "HSET" => handle_result(commands::hset(&mut conn, db, &args)),
         "HGET" => handle_result(commands::hget(&mut conn, db, &args)),
         "SELECT" => conn.write_string("OK"),

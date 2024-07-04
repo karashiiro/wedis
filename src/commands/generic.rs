@@ -25,6 +25,23 @@ pub fn del(
     Ok(())
 }
 
+#[tracing::instrument(skip_all)]
+pub fn exists(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() < 2 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let n_exists = db.exists(&args[1..].to_vec())?;
+
+    conn.write_integer(n_exists);
+    Ok(())
+}
+
 #[cfg(test)]
 mod test {
     use crate::{connection::MockConnection, database::MockDatabaseOperations};
