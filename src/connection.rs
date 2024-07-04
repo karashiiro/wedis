@@ -16,6 +16,8 @@ pub enum ClientError {
     UnknownAttribute,
     #[error("ERR wrong number of arguments for command")]
     ArgCount,
+    #[error("NX and XX, GT or LT options at the same time are not compatible")]
+    ExpireNxOptions,
     #[error("WRONGTYPE Operation against a key holding the wrong kind of value")]
     WrongType,
 }
@@ -70,6 +72,8 @@ impl Client<'_> {
 pub trait Connection {
     fn write_bulk(&mut self, msg: &[u8]);
 
+    fn write_array(&mut self, count: usize);
+
     fn write_string(&mut self, msg: &str);
 
     fn write_integer(&mut self, x: i64);
@@ -84,6 +88,10 @@ pub trait Connection {
 impl Connection for Client<'_> {
     fn write_bulk(&mut self, msg: &[u8]) {
         self.0.write_bulk(msg)
+    }
+
+    fn write_array(&mut self, count: usize) {
+        self.0.write_array(count)
     }
 
     fn write_string(&mut self, msg: &str) {

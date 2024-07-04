@@ -6,7 +6,88 @@ use tracing::debug;
 use crate::{
     connection::{ClientError, Connection},
     database::DatabaseOperations,
+    time::unix_timestamp,
 };
+
+#[tracing::instrument(skip_all)]
+pub fn persist(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 2 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    match db.delete_expiry(&key) {
+        Ok(_) => {
+            conn.write_integer(1);
+            Ok(())
+        }
+        Err(err) => {
+            conn.write_integer(0);
+            Err(err.into())
+        }
+    }
+}
+
+#[tracing::instrument(skip_all)]
+pub fn expireat(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() < 3 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    let ts = String::from_utf8_lossy(&args[2]).parse::<u64>()?;
+    let expires_at = Duration::from_secs(ts);
+    let expires_in = expires_at.saturating_sub(unix_timestamp()?);
+
+    match db.put_expiry(&key, expires_in) {
+        Ok(_) => {
+            conn.write_integer(1);
+            Ok(())
+        }
+        Err(err) => {
+            conn.write_integer(0);
+            Err(err.into())
+        }
+    }
+}
+
+#[tracing::instrument(skip_all)]
+pub fn pexpireat(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() < 3 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    let ts = String::from_utf8_lossy(&args[2]).parse::<u64>()?;
+    let expires_at = Duration::from_millis(ts);
+    let expires_in = expires_at.saturating_sub(unix_timestamp()?);
+
+    match db.put_expiry(&key, expires_in) {
+        Ok(_) => {
+            conn.write_integer(1);
+            Ok(())
+        }
+        Err(err) => {
+            conn.write_integer(0);
+            Err(err.into())
+        }
+    }
+}
 
 #[tracing::instrument(skip_all)]
 pub fn expire(
@@ -23,15 +104,53 @@ pub fn expire(
     let secs = String::from_utf8_lossy(&args[2]).parse::<u64>()?;
     let expires_in = Duration::from_secs(secs);
 
-    match db.put_expiry(&key, expires_in) {
-        Ok(_) => {
-            conn.write_integer(1);
-            Ok(())
-        }
+    let mut update_expiry = || match db.put_expiry(&key, expires_in) {
+        Ok(_) => Ok(conn.write_integer(1)),
         Err(err) => {
             conn.write_integer(0);
             Err(err.into())
         }
+    };
+
+    let mut options: Vec<String> = vec![];
+    for arg in args[3..].iter() {
+        options.push(String::from_utf8_lossy(&arg).into_owned().to_uppercase());
+    }
+
+    let nx = options.contains(&"NX".to_string());
+    let xx = options.contains(&"XX".to_string());
+    let gt = options.contains(&"GT".to_string());
+    let lt = options.contains(&"LT".to_string());
+
+    if nx && (xx || gt || lt) {
+        return Ok(conn.write_error(ClientError::ExpireNxOptions));
+    }
+
+    if nx {
+        match db.get_expiry(&key)? {
+            Some(_) => Ok(conn.write_integer(0)),
+            None => update_expiry(),
+        }
+    } else if gt {
+        match db.get_expiry(&key)? {
+            Some(ttl) if { expires_in < ttl } => Ok(conn.write_integer(0)),
+            None if { xx } => Ok(conn.write_integer(0)),
+            _ => update_expiry(),
+        }
+    } else if lt {
+        match db.get_expiry(&key)? {
+            Some(ttl) if { expires_in > ttl } => Ok(conn.write_integer(0)),
+            None if { xx } => Ok(conn.write_integer(0)),
+            _ => update_expiry(),
+        }
+    } else if xx {
+        match db.get_expiry(&key)? {
+            Some(_) => update_expiry(),
+            _ => Ok(conn.write_integer(0)),
+        }
+    } else {
+        // No options
+        update_expiry()
     }
 }
 
@@ -111,6 +230,68 @@ pub fn pttl(
     }
 
     let ttl: i64 = ttl.unwrap().as_millis().try_into()?;
+    conn.write_integer(ttl);
+
+    Ok(())
+}
+
+#[tracing::instrument(skip_all)]
+pub fn expiretime(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 2 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+
+    let ttl = db.get_expiry(key)?;
+    if let None = ttl {
+        return match db.exists(key)? {
+            0 => Ok(conn.write_integer(-2)),
+            _ => Ok(conn.write_integer(-1)),
+        };
+    }
+
+    let ttl: i64 = ttl
+        .unwrap()
+        .saturating_add(unix_timestamp()?)
+        .as_secs()
+        .try_into()?;
+    conn.write_integer(ttl);
+
+    Ok(())
+}
+
+#[tracing::instrument(skip_all)]
+pub fn pexpiretime(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 2 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+
+    let ttl = db.get_expiry(key)?;
+    if let None = ttl {
+        return match db.exists(key)? {
+            0 => Ok(conn.write_integer(-2)),
+            _ => Ok(conn.write_integer(-1)),
+        };
+    }
+
+    let ttl: i64 = ttl
+        .unwrap()
+        .saturating_add(unix_timestamp()?)
+        .as_millis()
+        .try_into()?;
     conn.write_integer(ttl);
 
     Ok(())

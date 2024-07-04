@@ -62,6 +62,8 @@ pub trait DatabaseOperations {
     fn increment_by(&self, key: &[u8], amount: i64) -> Result<i64, DatabaseError>;
 
     fn delete(&self, key: &[u8]) -> Result<i64, DatabaseError>;
+
+    fn delete_expiry(&self, key: &[u8]) -> Result<i64, DatabaseError>;
 }
 
 trait RString = AsRef<[u8]>;
@@ -106,6 +108,27 @@ impl Database {
             )),
             None => Ok(None),
         }
+    }
+
+    fn delete_expiry<K: RString>(&self, key: K) -> Result<i64, DatabaseError> {
+        let data_key = prepend_key(key.as_ref(), DATA_KEY_PREFIX.as_bytes());
+        let ttl_key = prepend_key(key.as_ref(), TTL_KEY_PREFIX.as_bytes());
+
+        // Begin a transaction on the data key to ensure we don't set
+        // a TTL while the value is being replaced.
+        let txn = self.db.transaction();
+        txn.get_for_update(data_key, true)?;
+
+        let existing_ttl = txn.get_for_update(ttl_key.clone(), true)?;
+        if let None = existing_ttl {
+            return Ok(0);
+        }
+
+        // Delete the TTL
+        txn.delete(ttl_key)?;
+        txn.commit()?;
+
+        Ok(1)
     }
 
     fn get_triple<K: RString>(
@@ -360,5 +383,9 @@ impl DatabaseOperations for Database {
         }
 
         self.delete_typed_value(key).and_then(|_| Ok(1))
+    }
+
+    fn delete_expiry(&self, key: &[u8]) -> Result<i64, DatabaseError> {
+        self.delete_expiry(key)
     }
 }

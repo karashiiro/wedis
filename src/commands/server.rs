@@ -1,4 +1,16 @@
-use crate::connection::Connection;
+use crate::{connection::Connection, time::unix_timestamp};
+use anyhow::Result;
+
+#[tracing::instrument(skip_all)]
+pub fn time(conn: &mut dyn Connection) -> Result<()> {
+    let ts = unix_timestamp()?.as_micros();
+
+    conn.write_array(2);
+    conn.write_integer((ts / 1000000).try_into()?);
+    conn.write_integer((ts % 1000000).try_into()?);
+
+    Ok(())
+}
 
 #[tracing::instrument(skip_all)]
 pub fn info(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
