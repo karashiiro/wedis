@@ -164,6 +164,36 @@ pub fn get(
 }
 
 #[tracing::instrument(skip_all)]
+pub fn getset(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 3 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    let new_value = &args[2];
+    match db.get_string(key) {
+        Ok(value) => match value {
+            Some(val) => {
+                debug!("Retrieved value {:?}", String::from_utf8_lossy(&val));
+                db.put_string(key, &new_value)?;
+                Ok(conn.write_bulk(&val))
+            }
+            None => {
+                debug!("Value does not exist");
+                Ok(conn.write_null())
+            }
+        },
+        Err(DatabaseError::WrongType { expected: _ }) => Ok(conn.write_null()),
+        Err(err) => Err(err.into()),
+    }
+}
+
+#[tracing::instrument(skip_all)]
 pub fn getdel(
     conn: &mut dyn Connection,
     db: &dyn DatabaseOperations,

@@ -48,6 +48,7 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "GET" => handle_result(commands::get(&mut conn, db, &args)),
         "GETRANGE" => handle_result(commands::getrange(&mut conn, db, &args)),
         "GETDEL" => handle_result(commands::getdel(&mut conn, db, &args)),
+        "GETSET" => handle_result(commands::getset(&mut conn, db, &args)),
         "STRLEN" => handle_result(commands::strlen(&mut conn, db, &args)),
         "SUBSTR" => handle_result(commands::substr(&mut conn, db, &args)),
         "INCR" => handle_result(commands::incr(&mut conn, db, &args)),
