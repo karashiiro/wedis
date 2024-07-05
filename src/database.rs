@@ -28,6 +28,8 @@ pub enum DatabaseError {
     Serde(#[from] serde_json::Error),
     #[error("integer parse error")]
     ParseInt(#[from] std::num::ParseIntError),
+    #[error("float parse error")]
+    ParseFloat(#[from] std::num::ParseFloatError),
     #[error("time error")]
     InvalidTime(#[from] TimeError),
     #[error("unexpected value type (expected {expected:?})")]
@@ -60,6 +62,8 @@ pub trait DatabaseOperations {
     fn exists(&self, key: &[u8]) -> Result<i64, DatabaseError>;
 
     fn increment_by(&self, key: &[u8], amount: i64) -> Result<i64, DatabaseError>;
+
+    fn increment_by_float(&self, key: &[u8], amount: f64) -> Result<f64, DatabaseError>;
 
     fn delete(&self, key: &[u8]) -> Result<i64, DatabaseError>;
 
@@ -368,6 +372,24 @@ impl DatabaseOperations for Database {
         // This needs to be a valid UTF-8 string in order to parse it
         let current_value = String::from_utf8_lossy(&current_value).into_owned();
         let current_value = current_value.parse::<i64>()?;
+        let next_value = current_value + amount;
+
+        self.put_typed_value_txn(&txn, key, next_value.to_string().as_bytes(), TYPE_STRING)?;
+
+        txn.commit()?;
+
+        Ok(next_value)
+    }
+
+    fn increment_by_float(&self, key: &[u8], amount: f64) -> Result<f64, DatabaseError> {
+        let txn = self.db.transaction();
+        let current_value = self
+            .get_typed_value_for_update(&txn, key, TYPE_STRING, true)?
+            .unwrap_or_else(|| "0".as_bytes().to_vec());
+
+        // This needs to be a valid UTF-8 string in order to parse it
+        let current_value = String::from_utf8_lossy(&current_value).into_owned();
+        let current_value = current_value.parse::<f64>()?;
         let next_value = current_value + amount;
 
         self.put_typed_value_txn(&txn, key, next_value.to_string().as_bytes(), TYPE_STRING)?;

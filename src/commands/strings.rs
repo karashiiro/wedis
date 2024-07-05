@@ -419,6 +419,29 @@ pub fn incrby(
 }
 
 #[tracing::instrument(skip_all)]
+pub fn incrbyfloat(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 3 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let amount = String::from_utf8_lossy(&args[2])
+        .into_owned()
+        .parse::<f64>()?;
+    match db.increment_by_float(&args[1], amount) {
+        Ok(value) => Ok(conn.write_bulk(value.to_string().as_bytes())),
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+#[tracing::instrument(skip_all)]
 pub fn decr(
     conn: &mut dyn Connection,
     db: &dyn DatabaseOperations,
@@ -771,6 +794,29 @@ mod test {
 
         let args: Vec<Vec<u8>> = vec!["INCRBY".into(), key.into(), amount.to_string().into()];
         let _ = incrby(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_incrbyfloat() {
+        let key = "key";
+        let amount = 3.14;
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_increment_by_float()
+            .with(eq(key.as_bytes()), eq(amount))
+            .times(1)
+            .returning(|_, _| Ok(4.14));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_bulk()
+            .with(eq("4.14".as_bytes()))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec!["INCRBYFLOAT".into(), key.into(), amount.to_string().into()];
+        let _ = incrbyfloat(&mut mock_conn, &mock_db, &args).unwrap();
     }
 
     #[test]

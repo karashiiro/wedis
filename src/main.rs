@@ -58,6 +58,7 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "SUBSTR" => handle_result(commands::substr(&mut conn, db, &args)),
         "INCR" => handle_result(commands::incr(&mut conn, db, &args)),
         "INCRBY" => handle_result(commands::incrby(&mut conn, db, &args)),
+        "INCRBYFLOAT" => handle_result(commands::incrbyfloat(&mut conn, db, &args)),
         "DECR" => handle_result(commands::decr(&mut conn, db, &args)),
         "DECRBY" => handle_result(commands::decrby(&mut conn, db, &args)),
         "DEL" => handle_result(commands::del(&mut conn, db, &args)),
