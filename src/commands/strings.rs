@@ -86,6 +86,15 @@ fn adjust_indices(end_index: usize, start: i64, end: i64) -> (usize, usize) {
 }
 
 #[tracing::instrument(skip_all)]
+pub fn getrange(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    substr(conn, db, args)
+}
+
+#[tracing::instrument(skip_all)]
 pub fn substr(
     conn: &mut dyn Connection,
     db: &dyn DatabaseOperations,
