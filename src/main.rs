@@ -47,6 +47,7 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "APPEND" => handle_result(commands::append(&mut conn, db, &args)),
         "SET" => handle_result(commands::set(&mut conn, db, &args)),
         "SETEX" => handle_result(commands::setex(&mut conn, db, &args)),
+        "SETRANGE" => handle_result(commands::setrange(&mut conn, db, &args)),
         "GET" => handle_result(commands::get(&mut conn, db, &args)),
         "MGET" => handle_result(commands::mget(&mut conn, db, &args)),
         "GETRANGE" => handle_result(commands::getrange(&mut conn, db, &args)),

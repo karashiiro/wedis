@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{cmp, time::Duration};
 
 use anyhow::Result;
 use tracing::debug;
@@ -144,6 +144,42 @@ fn adjust_index(end_index: usize, x: i64) -> usize {
 
 fn adjust_indices(end_index: usize, start: i64, end: i64) -> (usize, usize) {
     (adjust_index(end_index, start), adjust_index(end_index, end))
+}
+
+#[tracing::instrument(skip_all)]
+pub fn setrange(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 4 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    let value = &args[3];
+    let offset = String::from_utf8_lossy(&args[2]).parse::<usize>()?;
+    let end = offset + value.len();
+
+    match db.get_string(key) {
+        Ok(existing_value) => {
+            let existing_value = existing_value.unwrap_or_default();
+
+            let result_len = cmp::max(existing_value.len(), end);
+            let mut result_value: Vec<u8> = vec![0; result_len];
+            result_value[..existing_value.len()].copy_from_slice(&existing_value.as_slice());
+            result_value[offset..(offset + value.len())].copy_from_slice(&value);
+
+            db.put_string(key, &result_value)?;
+
+            Ok(conn.write_integer(result_len.try_into().unwrap()))
+        }
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
 }
 
 #[tracing::instrument(skip_all)]
@@ -456,6 +492,116 @@ mod test {
         let (start, end) = adjust_indices(end_index, start, end);
         assert_eq!(2, start);
         assert_eq!(4, end);
+    }
+
+    #[test]
+    fn test_setrange() {
+        let key = "key";
+        let initial_value = "value";
+
+        let offset = 1;
+        let replacement_value = "ery";
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_get_string()
+            .with(eq(key.as_bytes()))
+            .times(1)
+            .returning(|_| Ok(Some(initial_value.into())));
+
+        mock_db
+            .expect_put_string()
+            .with(eq(key.as_bytes()), eq("verye".as_bytes()))
+            .times(1)
+            .returning(|_, _| Ok(()));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_integer()
+            .with(eq(5))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec![
+            "SETRANGE".into(),
+            key.into(),
+            offset.to_string().into(),
+            replacement_value.into(),
+        ];
+        let _ = setrange(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_setrange_widening() {
+        let key = "key";
+        let initial_value = "value";
+
+        let offset = 6;
+        let replacement_value = "kept";
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_get_string()
+            .with(eq(key.as_bytes()))
+            .times(1)
+            .returning(|_| Ok(Some(initial_value.into())));
+
+        mock_db
+            .expect_put_string()
+            .with(eq(key.as_bytes()), eq("value\0kept".as_bytes()))
+            .times(1)
+            .returning(|_, _| Ok(()));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_integer()
+            .with(eq(10))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec![
+            "SETRANGE".into(),
+            key.into(),
+            offset.to_string().into(),
+            replacement_value.into(),
+        ];
+        let _ = setrange(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_setrange_empty_widening() {
+        let key = "key";
+
+        let offset = 6;
+        let replacement_value = "kept";
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_get_string()
+            .with(eq(key.as_bytes()))
+            .times(1)
+            .returning(|_| Ok(None));
+
+        mock_db
+            .expect_put_string()
+            .with(eq(key.as_bytes()), eq("\0\0\0\0\0\0kept".as_bytes()))
+            .times(1)
+            .returning(|_, _| Ok(()));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_integer()
+            .with(eq(10))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec![
+            "SETRANGE".into(),
+            key.into(),
+            offset.to_string().into(),
+            replacement_value.into(),
+        ];
+        let _ = setrange(&mut mock_conn, &mock_db, &args).unwrap();
     }
 
     #[test]
