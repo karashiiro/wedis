@@ -19,10 +19,37 @@ pub fn set(
         return Ok(());
     }
 
-    db.put_string(&args[1], &args[2])?;
+    let mut options: Vec<String> = vec![];
+    for arg in args[3..].iter() {
+        options.push(String::from_utf8_lossy(&arg).into_owned().to_uppercase());
+    }
 
-    conn.write_string("OK");
-    Ok(())
+    let get = options.contains(&"GET".to_string());
+
+    let key = &args[1];
+    let value = &args[2];
+    if get {
+        match db.get_string(key) {
+            Ok(existing_value) => match existing_value {
+                Some(ev) => {
+                    debug!("Retrieved value {:?}", String::from_utf8_lossy(&ev));
+                    db.put_string(key, value)?;
+                    Ok(conn.write_bulk(&ev))
+                }
+                None => {
+                    debug!("Value does not exist");
+                    Ok(conn.write_null())
+                }
+            },
+            Err(DatabaseError::WrongType { expected: _ }) => {
+                Ok(conn.write_error(ClientError::WrongType))
+            }
+            Err(err) => Err(err.into()),
+        }
+    } else {
+        db.put_string(key, value)?;
+        Ok(conn.write_string("OK"))
+    }
 }
 
 #[tracing::instrument(skip_all)]
