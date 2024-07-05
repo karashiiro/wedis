@@ -225,6 +225,31 @@ pub fn get(
 }
 
 #[tracing::instrument(skip_all)]
+pub fn mget(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() < 2 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let n_results = args.len() - 1;
+    conn.write_array(n_results);
+
+    for key in args[1..].iter() {
+        let value = db.get_string(key).ok().flatten();
+        match value {
+            Some(v) => conn.write_bulk(&v),
+            None => conn.write_null(),
+        };
+    }
+
+    Ok(())
+}
+
+#[tracing::instrument(skip_all)]
 pub fn getset(
     conn: &mut dyn Connection,
     db: &dyn DatabaseOperations,
