@@ -7,6 +7,7 @@ edition = "2021"
 anyhow = "1.0.86"
 concat-string = "1.0.1"
 itertools = "0.13.0"
+popcnt = "0.1.0"
 redcon = "0.1.2"
 # rocksdb 0.22.0 panics when opening a TransactionDB: https://github.com/rust-rocksdb/rust-rocksdb/issues/881
 rocksdb = { git = "https://github.com/rust-rocksdb/rust-rocksdb", rev = "1cf906dc4087f06631820f13855e6b27bd21b972" }
