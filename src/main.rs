@@ -78,7 +78,10 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "SELECT" => conn.write_string("OK"),
         "INFO" => commands::info(&mut conn, &args),
         "TIME" => handle_result(commands::time(&mut conn)),
-        _ => conn.write_error(ClientError::UnknownCommand),
+        _ => {
+            error!("Unknown command: {}", name);
+            conn.write_error(ClientError::UnknownCommand)
+        }
     }
 }
 

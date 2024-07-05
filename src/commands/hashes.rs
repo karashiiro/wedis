@@ -1,5 +1,6 @@
 use anyhow::Result;
 use itertools::Itertools;
+use tracing::debug;
 
 use crate::{
     connection::{ClientError, Connection},
@@ -72,10 +73,11 @@ pub fn hstrlen(
     }
 
     match db.get_hash_field(&args[1], &args[2]) {
-        Ok(value) => match value {
-            Some(val) => Ok(conn.write_integer(val.len().try_into().unwrap())),
-            None => Ok(conn.write_integer(0)),
-        },
+        Ok(value) => {
+            let val = value.unwrap_or_default();
+            debug!("Hash field has length {}", val.len());
+            Ok(conn.write_integer(val.len().try_into().unwrap()))
+        }
         Err(DatabaseError::WrongType { expected: _ }) => {
             Ok(conn.write_error(ClientError::WrongType))
         }
