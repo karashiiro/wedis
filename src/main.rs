@@ -43,6 +43,7 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "PING" => commands::ping(&mut conn, &args),
         "ECHO" => commands::echo(&mut conn, &args),
         "CLIENT" => commands::client(&mut conn, &args),
+        "APPEND" => handle_result(commands::append(&mut conn, db, &args)),
         "SET" => handle_result(commands::set(&mut conn, db, &args)),
         "SETEX" => handle_result(commands::setex(&mut conn, db, &args)),
         "GET" => handle_result(commands::get(&mut conn, db, &args)),

@@ -9,6 +9,40 @@ use crate::{
 };
 
 #[tracing::instrument(skip_all)]
+pub fn append(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() < 3 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    let value = &args[2];
+    match db.get_string(key) {
+        Ok(existing_value) => match existing_value {
+            Some(ev) => {
+                debug!("Retrieved value {:?}", String::from_utf8_lossy(&ev));
+                let new_value = [ev, value.to_vec()].concat();
+                db.put_string(key, &new_value)?;
+                Ok(conn.write_integer(new_value.len().try_into().unwrap()))
+            }
+            None => {
+                debug!("Value does not exist, creating");
+                db.put_string(key, value)?;
+                Ok(conn.write_integer(value.len().try_into().unwrap()))
+            }
+        },
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+#[tracing::instrument(skip_all)]
 pub fn set(
     conn: &mut dyn Connection,
     db: &dyn DatabaseOperations,
