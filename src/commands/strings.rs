@@ -109,6 +109,37 @@ pub fn setex(
 }
 
 #[tracing::instrument(skip_all)]
+pub fn setnx(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 3 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    let value = &args[2];
+    match db.get_string(key) {
+        Ok(existing_value) => match existing_value {
+            Some(_) => {
+                db.put_string(key, value)?;
+                Ok(conn.write_integer(1))
+            }
+            None => {
+                debug!("Value does not exist");
+                Ok(conn.write_integer(0))
+            }
+        },
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+#[tracing::instrument(skip_all)]
 pub fn strlen(
     conn: &mut dyn Connection,
     db: &dyn DatabaseOperations,
