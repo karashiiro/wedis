@@ -113,6 +113,32 @@ pub fn ping(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
 }
 
 #[tracing::instrument(skip_all)]
+pub fn hello(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
+    if args.len() != 1 {
+        conn.write_error(ClientError::ArgCount);
+        return;
+    }
+
+    conn.write_array(14);
+    conn.write_string("server");
+    conn.write_string("redis");
+    conn.write_string("version");
+    conn.write_string("7.2.5");
+    conn.write_string("proto");
+    conn.write_integer(2);
+    conn.write_string("id");
+
+    let connection_id = conn.connection_id();
+    conn.write_integer(connection_id);
+    conn.write_string("mode");
+    conn.write_string("standalone");
+    conn.write_string("role");
+    conn.write_string("master");
+    conn.write_string("modules");
+    conn.write_array(0);
+}
+
+#[tracing::instrument(skip_all)]
 pub fn quit(conn: &mut dyn Connection) {
     conn.write_string("OK")
 }

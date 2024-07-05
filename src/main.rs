@@ -40,6 +40,7 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
     log_command(args.clone());
     match name.as_str() {
         "QUIT" => commands::quit(&mut conn),
+        "HELLO" => commands::hello(&mut conn, &args),
         "PING" => commands::ping(&mut conn, &args),
         "ECHO" => commands::echo(&mut conn, &args),
         "CLIENT" => commands::client(&mut conn, &args),

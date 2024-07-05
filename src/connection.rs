@@ -83,6 +83,8 @@ pub trait Connection {
     fn write_null(&mut self);
 
     fn context(&mut self) -> &mut Option<Box<dyn Any>>;
+
+    fn connection_id(&mut self) -> i64;
 }
 
 impl Connection for Client<'_> {
@@ -112,5 +114,17 @@ impl Connection for Client<'_> {
 
     fn context(&mut self) -> &mut Option<Box<dyn Any>> {
         &mut self.0.context
+    }
+
+    fn connection_id(&mut self) -> i64 {
+        match self.context() {
+            Some(ctx) => {
+                let ctx = ctx
+                    .downcast_mut::<ConnectionContext>()
+                    .expect("context should be a ConnectionContext");
+                ctx.id()
+            }
+            None => -1,
+        }
     }
 }
