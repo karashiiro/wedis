@@ -60,6 +60,29 @@ pub fn hget(
     }
 }
 
+#[tracing::instrument(skip_all)]
+pub fn hstrlen(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 3 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    match db.get_hash_field(&args[1], &args[2]) {
+        Ok(value) => match value {
+            Some(val) => Ok(conn.write_integer(val.len().try_into().unwrap())),
+            None => Ok(conn.write_integer(0)),
+        },
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::{connection::MockConnection, database::MockDatabaseOperations};

@@ -74,6 +74,7 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "PTTL" => handle_result(commands::pttl(&mut conn, db, &args)),
         "HSET" => handle_result(commands::hset(&mut conn, db, &args)),
         "HGET" => handle_result(commands::hget(&mut conn, db, &args)),
+        "HSTRLEN" => handle_result(commands::hstrlen(&mut conn, db, &args)),
         "SELECT" => conn.write_string("OK"),
         "INFO" => commands::info(&mut conn, &args),
         "TIME" => handle_result(commands::time(&mut conn)),
