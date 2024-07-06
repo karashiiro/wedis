@@ -59,12 +59,25 @@ fn bit_range(data: &[u8], start_bit: usize, mut end_bit_exclusive: usize) -> Vec
     data_copy
 }
 
+fn get_bit(byte: u8, pos: usize) -> u8 {
+    (byte & (1 << (7 - pos))) >> (7 - pos)
+}
+
+fn set_bit(byte: u8, pos: usize, value: u8) -> u8 {
+    let bit_mask = 1 << (7 - pos);
+    if value == 0 {
+        byte & (!bit_mask)
+    } else {
+        byte | bit_mask
+    }
+}
+
 fn find_first_bit_pos_byte(bale: u8, needle: u8) -> Option<usize> {
     // Iterate from MSB to LSB
-    for i in (0..8).rev() {
-        let bit = (bale & (1 << i)) >> i;
+    for i in 0..8 {
+        let bit = get_bit(bale, i);
         if needle == bit {
-            return Some(7 - i);
+            return Some(i);
         }
     }
 
@@ -91,6 +104,96 @@ fn find_first_bit_pos(
     }
 
     None
+}
+
+fn get_bit_at(data: &[u8], pos: usize) -> Option<u8> {
+    data.get(pos / 8).map(|byte| get_bit(*byte, pos % 8))
+}
+
+fn set_bit_at_padding(data: &[u8], pos: usize, value: u8) -> Vec<u8> {
+    let required_len = (pos / 8) + 1;
+    let mut data_copy: Vec<u8> = vec![0; required_len];
+    data_copy[..data.len()].copy_from_slice(&data);
+
+    let byte = data_copy.get_mut(required_len - 1).unwrap();
+    *byte = set_bit(*byte, pos % 8, value);
+
+    data_copy
+}
+
+#[tracing::instrument(skip_all)]
+pub fn getbit(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 3 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    let offset: usize = match String::from_utf8_lossy(&args[2]).parse::<i32>() {
+        Ok(o) if { o >= 0 } => o.try_into().unwrap(),
+        _ => {
+            conn.write_error(ClientError::BitOffset);
+            return Ok(());
+        }
+    };
+
+    match db.get_string(key) {
+        Ok(value) => {
+            let val = value.unwrap_or_default();
+            debug!("Retrieved value {:?}", String::from_utf8_lossy(&val));
+
+            let existing_bit = get_bit_at(&val, offset).unwrap_or_default();
+            Ok(conn.write_integer(existing_bit.into()))
+        }
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+#[tracing::instrument(skip_all)]
+pub fn setbit(
+    conn: &mut dyn Connection,
+    db: &dyn DatabaseOperations,
+    args: &Vec<Vec<u8>>,
+) -> Result<()> {
+    if args.len() != 4 {
+        conn.write_error(ClientError::ArgCount);
+        return Ok(());
+    }
+
+    let key = &args[1];
+    let offset: usize = match String::from_utf8_lossy(&args[2]).parse::<i32>() {
+        Ok(o) if { o >= 0 } => o.try_into().unwrap(),
+        _ => {
+            conn.write_error(ClientError::BitOffset);
+            return Ok(());
+        }
+    };
+
+    let bit: u8 = if &args[3] == "1".as_bytes() { 1 } else { 0 };
+    match db.get_string(key) {
+        Ok(value) => {
+            let val = value.unwrap_or_default();
+            debug!("Retrieved value {:?}", String::from_utf8_lossy(&val));
+
+            let existing_bit = get_bit_at(&val, offset).unwrap_or_default();
+            let val = set_bit_at_padding(&val, offset, bit);
+
+            db.put_string(key, &val)?;
+
+            Ok(conn.write_integer(existing_bit.into()))
+        }
+        Err(DatabaseError::WrongType { expected: _ }) => {
+            Ok(conn.write_error(ClientError::WrongType))
+        }
+        Err(err) => Err(err.into()),
+    }
 }
 
 #[tracing::instrument(skip_all)]
@@ -204,6 +307,104 @@ mod test {
     use mockall::predicate::*;
 
     use super::*;
+
+    #[test]
+    fn test_setbit() {
+        let key = "key";
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_get_string()
+            .with(eq(key.as_bytes()))
+            .times(1)
+            .returning(|_| Ok(None));
+        mock_db
+            .expect_put_string()
+            .with(eq(key.as_bytes()), eq(vec![0b00000001]))
+            .times(1)
+            .returning(|_, _| Ok(()));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_integer()
+            .with(eq(0))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec![
+            "SETBIT".into(),
+            key.into(),
+            7.to_string().into(),
+            1.to_string().into(),
+        ];
+        let _ = setbit(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_getbit_1() {
+        let key = "key";
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_get_string()
+            .with(eq(key.as_bytes()))
+            .times(1)
+            .returning(|_| Ok(vec![0b00000001].into()));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_integer()
+            .with(eq(0))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec!["GETBIT".into(), key.into(), 0.to_string().into()];
+        let _ = getbit(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_getbit_2() {
+        let key = "key";
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_get_string()
+            .with(eq(key.as_bytes()))
+            .times(1)
+            .returning(|_| Ok(vec![0b00000001].into()));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_integer()
+            .with(eq(1))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec!["GETBIT".into(), key.into(), 7.to_string().into()];
+        let _ = getbit(&mut mock_conn, &mock_db, &args).unwrap();
+    }
+
+    #[test]
+    fn test_getbit_out_of_range() {
+        let key = "key";
+
+        let mut mock_db = MockDatabaseOperations::new();
+        mock_db
+            .expect_get_string()
+            .with(eq(key.as_bytes()))
+            .times(1)
+            .returning(|_| Ok(vec![0b00000001].into()));
+
+        let mut mock_conn = MockConnection::new();
+        mock_conn
+            .expect_write_integer()
+            .with(eq(0))
+            .times(1)
+            .return_const(());
+
+        let args: Vec<Vec<u8>> = vec!["GETBIT".into(), key.into(), 100.to_string().into()];
+        let _ = getbit(&mut mock_conn, &mock_db, &args).unwrap();
+    }
 
     #[test]
     fn test_bitcount() {

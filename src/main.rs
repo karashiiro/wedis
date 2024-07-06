@@ -79,6 +79,8 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "HSTRLEN" => handle_result(commands::hstrlen(&mut conn, db, &args)),
         "BITCOUNT" => handle_result(commands::bitcount(&mut conn, db, &args)),
         "BITPOS" => handle_result(commands::bitpos(&mut conn, db, &args)),
+        "GETBIT" => handle_result(commands::getbit(&mut conn, db, &args)),
+        "SETBIT" => handle_result(commands::setbit(&mut conn, db, &args)),
         "SELECT" => conn.write_string("OK"),
         "INFO" => commands::info(&mut conn, &args),
         "TIME" => handle_result(commands::time(&mut conn)),

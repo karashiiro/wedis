@@ -16,6 +16,8 @@ pub enum ClientError {
     UnknownAttribute,
     #[error("ERR wrong number of arguments for command")]
     ArgCount,
+    #[error("bit offset is not an integer or out of range")]
+    BitOffset,
     #[error("NX and XX, GT or LT options at the same time are not compatible")]
     ExpireNxOptions,
     #[error("WRONGTYPE Operation against a key holding the wrong kind of value")]
