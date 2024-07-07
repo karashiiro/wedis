@@ -13,9 +13,14 @@ redcon = "0.1.2"
 rocksdb = { git = "https://github.com/rust-rocksdb/rust-rocksdb", rev = "1cf906dc4087f06631820f13855e6b27bd21b972" }
 serde = "1.0.203"
 serde_json = "1.0.119"
+submap = "0.3.0"
 thiserror = "1.0.61"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 
 [dev-dependencies]
 mockall = "0.12.1"
+
+[patch.crates-io]
+#redcon = { git = "https://github.com/karashiiro/redcon.rs" }
+redcon = { path = '../redcon.rs' }

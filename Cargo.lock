@@ -425,8 +425,6 @@ checksum = "03251193000f4bd3b042892be858ee50e8b3719f2b08e5833ac4353724632430"
 [[package]]
 name = "redcon"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1858cf83e63a6524904758e164b2b9a3c29ffc2105f0f7a6e70860241d5eda7"
 
 [[package]]
 name = "regex"
@@ -529,6 +527,15 @@ name = "smallvec"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
+
+[[package]]
+name = "submap"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9806dfdc0bae5b5bf5338b9fb715fca0e6144e8a36e62ca7a6664d0503ce46b"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "syn"
@@ -665,6 +672,7 @@ dependencies = [
  "rocksdb",
  "serde",
  "serde_json",
+ "submap",
  "thiserror",
  "tracing",
  "tracing-subscriber",

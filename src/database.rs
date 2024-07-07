@@ -37,7 +37,6 @@ pub enum DatabaseError {
 }
 
 pub struct Database {
-    connect_count: i64,
     db: TransactionDB,
 }
 
@@ -74,16 +73,7 @@ trait RString = AsRef<[u8]>;
 
 impl Database {
     pub fn new(db: TransactionDB) -> Self {
-        Self {
-            db,
-            connect_count: 0,
-        }
-    }
-
-    pub fn acquire_connection(&mut self) -> i64 {
-        let current = self.connect_count;
-        self.connect_count += 1;
-        current
+        Self { db }
     }
 
     fn put_expiry<K: RString>(&self, key: K, expires_in: Duration) -> Result<(), DatabaseError> {

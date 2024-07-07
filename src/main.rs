@@ -5,6 +5,7 @@ mod connection;
 mod database;
 mod indexing;
 mod known_issues;
+mod subscription;
 mod time;
 
 use std::sync::{Arc, Mutex};
@@ -14,11 +15,17 @@ use connection::{Client, ClientError, Connection, ConnectionContext};
 use database::Database;
 use redcon::Conn;
 use rocksdb::{Options, TransactionDB, DB};
+use subscription::{MessageBus, PubSubServer};
 use tracing::{debug, error, info, Level};
 use tracing_subscriber;
 
 #[macro_use(concat_string)]
 extern crate concat_string;
+
+struct Service {
+    db: Database,
+    message_bus: PubSubServer,
+}
 
 fn handle_result(result: Result<()>) {
     if let Err(err) = result {
@@ -34,9 +41,11 @@ fn log_command(args: Vec<Vec<u8>>) {
     debug!("> {:?}", parsed_args);
 }
 
-fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
+fn handle_command(conn: &mut Conn, service: &mut Service, args: Vec<Vec<u8>>) {
     let mut conn = Client::new(conn);
     let name = String::from_utf8_lossy(&args[0]).to_uppercase();
+    let db = &service.db;
+    let message_bus = &mut service.message_bus;
 
     log_command(args.clone());
     match name.as_str() {
@@ -84,6 +93,7 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
         "SELECT" => conn.write_string("OK"),
         "INFO" => commands::info(&mut conn, &args),
         "TIME" => handle_result(commands::time(&mut conn)),
+        "SUBSCRIBE" => handle_result(commands::subscribe(&mut conn, message_bus, &args)),
         _ => {
             error!("Unknown command: {}", name);
             conn.write_error(ClientError::UnknownCommand)
@@ -99,21 +109,28 @@ fn main() {
     let path = ".wedis";
     {
         let db_raw = TransactionDB::open_default(path).expect("Failed to open database");
-        let db = Arc::new(Mutex::new(Database::new(db_raw)));
+        let db = Database::new(db_raw);
+        let message_bus = PubSubServer::new();
+        let service = Arc::new(Mutex::new(Service { db, message_bus }));
 
-        let mut s = redcon::listen("127.0.0.1:6379", db).expect("Failed to start server");
-        s.opened = Some(|conn, db| {
+        let mut s = redcon::listen("127.0.0.1:6379", service).expect("Failed to start server");
+        s.opened = Some(|conn, service| {
             info!("Got new connection from {}", conn.addr());
-
-            let connection_id = db.lock().unwrap().acquire_connection();
-            conn.context = Some(Box::new(ConnectionContext::new(connection_id)));
+            conn.context = Some(Box::new(ConnectionContext::new()));
         });
-        s.closed = Some(|_conn, _db, err| {
+        s.closed = Some(|conn, service, err| {
+            let mut conn = Client::new(conn);
+            service
+                .lock()
+                .unwrap()
+                .message_bus
+                .unregister_client(&mut conn);
             if let Some(err) = err {
                 error!("{}", err)
             }
         });
-        s.command = Some(|conn, db, args| handle_command(conn, &db.lock().unwrap(), args));
+        s.command =
+            Some(|conn, service, args| handle_command(conn, &mut service.lock().unwrap(), args));
         info!("Serving at {}", s.local_addr());
 
         known_issues::warn_known_issues();

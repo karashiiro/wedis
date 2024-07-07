@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use redcon::Conn;
 use thiserror::Error;
 
@@ -24,17 +22,16 @@ pub enum ClientError {
     WrongType,
 }
 
+#[derive(Clone)]
 pub struct ConnectionContext {
-    id: i64,
     lib_name: String,
     lib_version: String,
     connection_name: Option<String>,
 }
 
 impl ConnectionContext {
-    pub fn new(id: i64) -> Self {
+    pub fn new() -> Self {
         ConnectionContext {
-            id,
             lib_name: "".to_string(),
             lib_version: "".to_string(),
             connection_name: None,
@@ -55,10 +52,6 @@ impl ConnectionContext {
 
     pub fn connection_name(&self) -> Option<String> {
         self.connection_name.clone()
-    }
-
-    pub fn id(&self) -> i64 {
-        self.id
     }
 }
 
@@ -84,9 +77,15 @@ pub trait Connection {
 
     fn write_null(&mut self);
 
-    fn context(&mut self) -> &mut Option<Box<dyn Any>>;
+    fn context(&self) -> Option<ConnectionContext>;
 
-    fn connection_id(&mut self) -> i64;
+    fn connection_id(&self) -> u64;
+
+    fn set_lib_name(&mut self, lib_name: &str);
+
+    fn set_lib_version(&mut self, lib_version: &str);
+
+    fn set_connection_name(&mut self, connection_name: &str);
 }
 
 impl Connection for Client<'_> {
@@ -114,19 +113,51 @@ impl Connection for Client<'_> {
         self.0.write_null()
     }
 
-    fn context(&mut self) -> &mut Option<Box<dyn Any>> {
-        &mut self.0.context
+    fn context(&self) -> Option<ConnectionContext> {
+        self.0
+            .context
+            .as_ref()
+            .and_then(|ctx| ctx.downcast_ref::<ConnectionContext>())
+            .and_then(|ctx| Some(ctx.clone()))
     }
 
-    fn connection_id(&mut self) -> i64 {
-        match self.context() {
-            Some(ctx) => {
-                let ctx = ctx
-                    .downcast_mut::<ConnectionContext>()
-                    .expect("context should be a ConnectionContext");
-                ctx.id()
-            }
-            None => -1,
+    fn connection_id(&self) -> u64 {
+        self.0.id()
+    }
+
+    fn set_lib_name(&mut self, lib_name: &str) {
+        let ctx = self
+            .0
+            .context
+            .as_mut()
+            .and_then(|ctx| ctx.downcast_mut::<ConnectionContext>());
+        match ctx {
+            Some(ctx) => ctx.set_lib_name(lib_name),
+            None => (),
+        }
+    }
+
+    fn set_lib_version(&mut self, lib_version: &str) {
+        let ctx = self
+            .0
+            .context
+            .as_mut()
+            .and_then(|ctx| ctx.downcast_mut::<ConnectionContext>());
+        match ctx {
+            Some(ctx) => ctx.set_lib_version(lib_version),
+            None => (),
+        }
+    }
+
+    fn set_connection_name(&mut self, connection_name: &str) {
+        let ctx = self
+            .0
+            .context
+            .as_mut()
+            .and_then(|ctx| ctx.downcast_mut::<ConnectionContext>());
+        match ctx {
+            Some(ctx) => ctx.set_connection_name(connection_name),
+            None => (),
         }
     }
 }
