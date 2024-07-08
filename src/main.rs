@@ -5,6 +5,7 @@ mod connection;
 mod database;
 mod indexing;
 mod known_issues;
+mod server;
 mod time;
 
 use std::sync::{Arc, Mutex};
@@ -12,8 +13,9 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use connection::{Client, ClientError, Connection, ConnectionContext};
 use database::Database;
-use redcon::Conn;
 use rocksdb::{Options, TransactionDB, DB};
+use server::{Conn, Handler, ServerError};
+use tokio::signal;
 use tracing::{debug, error, info, Level};
 use tracing_subscriber;
 
@@ -22,7 +24,7 @@ extern crate concat_string;
 
 fn handle_result(result: Result<()>) {
     if let Err(err) = result {
-        error!("{}", err)
+        error!(cause = ?err, "command failed")
     }
 }
 
@@ -91,34 +93,45 @@ fn handle_command(conn: &mut Conn, db: &Database, args: Vec<Vec<u8>>) {
     }
 }
 
-fn main() {
+#[derive(Clone)]
+struct MyHandler(Arc<Mutex<Database>>);
+
+impl Handler for MyHandler {
+    async fn on_open(&self, conn: &mut Conn) {
+        info!("Got new connection from {}", conn.addr());
+
+        let connection_id = self.0.lock().unwrap().acquire_connection();
+        conn.context = Some(Box::new(ConnectionContext::new(connection_id)));
+    }
+
+    async fn on_close(&self, _conn: &mut Conn, err: Option<&ServerError>) {
+        if let Some(err) = err {
+            error!(cause = ?err, "connection aborted")
+        }
+    }
+
+    async fn on_command(&self, conn: &mut Conn, args: Vec<Vec<u8>>) {
+        handle_command(conn, &self.0.lock().unwrap(), args);
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_max_level(Level::TRACE)
         .init();
+
+    known_issues::warn_known_issues();
 
     let path = ".wedis";
     {
         let db_raw = TransactionDB::open_default(path).expect("Failed to open database");
         let db = Arc::new(Mutex::new(Database::new(db_raw)));
 
-        let mut s = redcon::listen("127.0.0.1:6379", db).expect("Failed to start server");
-        s.opened = Some(|conn, db| {
-            info!("Got new connection from {}", conn.addr());
-
-            let connection_id = db.lock().unwrap().acquire_connection();
-            conn.context = Some(Box::new(ConnectionContext::new(connection_id)));
-        });
-        s.closed = Some(|_conn, _db, err| {
-            if let Some(err) = err {
-                error!("{}", err)
-            }
-        });
-        s.command = Some(|conn, db, args| handle_command(conn, &db.lock().unwrap(), args));
-        info!("Serving at {}", s.local_addr());
-
-        known_issues::warn_known_issues();
-
-        s.serve().expect("Failed to execute server");
+        let h = MyHandler(db);
+        server::serve(h, signal::ctrl_c()).await?;
     }
     let _ = DB::destroy(&Options::default(), path);
+
+    Ok(())
 }

@@ -1,10 +1,9 @@
-use std::any::Any;
-
-use redcon::Conn;
 use thiserror::Error;
 
 #[cfg(test)]
 use mockall::automock;
+
+use crate::server::Conn;
 
 #[derive(Error, Debug)]
 pub enum ClientError {
@@ -84,7 +83,7 @@ pub trait Connection {
 
     fn write_null(&mut self);
 
-    fn context(&mut self) -> &mut Option<Box<dyn Any>>;
+    fn context(&mut self) -> &mut Option<Box<ConnectionContext>>;
 
     fn connection_id(&mut self) -> i64;
 }
@@ -114,18 +113,13 @@ impl Connection for Client<'_> {
         self.0.write_null()
     }
 
-    fn context(&mut self) -> &mut Option<Box<dyn Any>> {
+    fn context(&mut self) -> &mut Option<Box<ConnectionContext>> {
         &mut self.0.context
     }
 
     fn connection_id(&mut self) -> i64 {
         match self.context() {
-            Some(ctx) => {
-                let ctx = ctx
-                    .downcast_mut::<ConnectionContext>()
-                    .expect("context should be a ConnectionContext");
-                ctx.id()
-            }
+            Some(ctx) => ctx.id(),
             None => -1,
         }
     }

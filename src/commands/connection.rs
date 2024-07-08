@@ -1,4 +1,4 @@
-use crate::connection::{ClientError, Connection, ConnectionContext};
+use crate::connection::{ClientError, Connection};
 
 #[tracing::instrument(skip_all)]
 pub fn client(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
@@ -15,10 +15,6 @@ pub fn client(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
                     conn.write_error(ClientError::ArgCount);
                     return;
                 }
-
-                let ctx = ctx
-                    .downcast_mut::<ConnectionContext>()
-                    .expect("context should be a ConnectionContext");
 
                 let attribute_key = String::from_utf8_lossy(&args[2]).to_uppercase();
                 let attribute_value = String::from_utf8_lossy(&args[3]);
@@ -43,10 +39,6 @@ pub fn client(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
                     return;
                 }
 
-                let ctx = ctx
-                    .downcast_mut::<ConnectionContext>()
-                    .expect("context should be a ConnectionContext");
-
                 let connection_name = String::from_utf8_lossy(&args[2]);
                 ctx.set_connection_name(&connection_name);
                 conn.write_string("OK");
@@ -59,10 +51,6 @@ pub fn client(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
                     conn.write_error(ClientError::ArgCount);
                     return;
                 }
-
-                let ctx = ctx
-                    .downcast_mut::<ConnectionContext>()
-                    .expect("context should be a ConnectionContext");
 
                 match ctx.connection_name() {
                     Some(connection_name) => conn.write_bulk(connection_name.as_bytes()),
@@ -77,10 +65,6 @@ pub fn client(conn: &mut dyn Connection, args: &Vec<Vec<u8>>) {
                     conn.write_error(ClientError::ArgCount);
                     return;
                 }
-
-                let ctx = ctx
-                    .downcast_mut::<ConnectionContext>()
-                    .expect("context should be a ConnectionContext");
 
                 let id = ctx.id();
                 conn.write_integer(id);
